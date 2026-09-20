@@ -1,0 +1,34 @@
+[
+  {
+    "video_id": "practice",
+    "role": "practice",
+    "domain": "practice_clip_not_in_moments",
+    "clip_uid": "",
+    "filename": "practice.mp4",
+    "duration_sec": 106.0
+  },
+  {
+    "video_id": "V01",
+    "role": "main",
+    "domain": "kitchen_cleaning_desk_work",
+    "clip_uid": "9df49083-577b-43f9-9874-6e4b21f104b4",
+    "filename": "V01.mp4",
+    "duration_sec": 349.0
+  },
+  {
+    "video_id": "V02",
+    "role": "main",
+    "domain": "cooking_dough",
+    "clip_uid": "fbafc354-121f-40f1-a553-bbae0d2f66ed",
+    "filename": "V02.mp4",
+    "duration_sec": 480.0
+  },
+  {
+    "video_id": "V03",
+    "role": "main",
+    "domain": "carpentry_measuring_cutting",
+    "clip_uid": "",
+    "filename": "V03.mp4",
+    "duration_sec": 1074.667
+  }
+]

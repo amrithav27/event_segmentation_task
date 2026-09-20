@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Boundary player</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --fg: #fafafa;
+    --muted: #9aa0a6;
+    --accent: #4c8bf5;
+    --mark: #ffb703;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  /* The stage is sized in JS to the browser viewport, so the video gets the
+     whole screen. Height is set on #stage rather than on the video so the
+     overlay and flash, which are absolutely positioned against it, follow. */
+  #stage {
+    position: relative;
+    width: 100%;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    outline: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* `contain` letterboxes rather than crops: the participant always sees
+       the entire frame, whatever the video's aspect ratio. */
+    object-fit: contain;
+    background: #000;
+  }
+  /* Click-to-start overlay. Clicking also gives the iframe keyboard focus,
+     which is what makes the key listeners work at all. */
+  #overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.88);
+    cursor: pointer;
+    text-align: center;
+    padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h2 { margin: 0; font-size: 1.35rem; font-weight: 600; }
+  #overlay p { margin: 0; color: var(--muted); font-size: 0.95rem; max-width: 46ch; }
+  #overlay .cta {
+    margin-top: 6px; padding: 10px 22px;
+    background: var(--accent); color: #fff;
+    border-radius: 6px; font-weight: 600;
+  }
+  /* Transient flash confirming a mark registered. Deliberately shows no
+     running count, so participants are not nudged toward a target rate. */
+  #flash {
+    position: absolute; inset: 0;
+    border: 4px solid var(--mark);
+    border-radius: 8px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #flash.on { animation: pulse 260ms ease-out; }
+  @keyframes pulse { from { opacity: 0.95; } to { opacity: 0; } }
+
+  /* Shown while the video is paused, so the state is never ambiguous. */
+  #paused {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    font-size: 2.2rem; font-weight: 700; letter-spacing: 0.08em;
+  }
+  #paused.on { display: flex; }
+
+  /* Scrub bar: click anywhere to seek. Marks appear as ticks. */
+  #bar {
+    position: relative;
+    width: 100%; height: 14px;
+    margin-top: 6px;
+    background: #262730;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  #bar-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 0; background: var(--accent);
+    border-radius: 3px 0 0 3px;
+    pointer-events: none;
+  }
+  .tick {
+    position: absolute; top: -3px; bottom: -3px;
+    width: 2px; margin-left: -1px;
+    background: var(--mark);
+    pointer-events: none;
+  }
+  #hint {
+    padding: 8px 2px 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    display: flex; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+  }
+  #keys { color: var(--muted); font-size: 0.84rem; padding-top: 4px; }
+  kbd {
+    background: #262730; border: 1px solid #3a3b46; border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 6px; font-family: inherit;
+    font-size: 0.82rem; color: var(--fg);
+  }
+  #warn { color: #f0a202; }
+  #err { padding: 16px; color: #ff6b6b; font-size: 0.95rem; display: none; }
+</style>
+</head>
+<body>
+<div id="stage" tabindex="0">
+  <video id="vid" playsinline preload="auto" disablepictureinpicture></video>
+  <div id="flash"></div>
+  <div id="paused">PAUSED</div>
+  <div id="overlay">
+    <h2 id="ov-title">Click here to start</h2>
+    <p id="ov-body"></p>
+    <div class="cta">Click to begin</div>
+  </div>
+</div>
+<div id="bar"><div id="bar-fill"></div></div>
+<div id="hint">
+  <span id="hint-left"></span>
+  <span id="warn"></span>
+</div>
+<div id="keys">
+  <kbd>Enter</kbd> mark a boundary &nbsp;·&nbsp;
+  <kbd>Space</kbd> play / pause &nbsp;·&nbsp;
+  <kbd>&larr;</kbd> <kbd>&rarr;</kbd> back / forward 5s &nbsp;·&nbsp;
+  <kbd>&uarr;</kbd> <kbd>&darr;</kbd> 30s &nbsp;·&nbsp;
+  <kbd>Backspace</kbd> undo last mark &nbsp;·&nbsp; click the bar to jump
+</div>
+<div id="err"></div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * Minimal, hand-rolled implementation of the Streamlit component
+ * protocol. It is just postMessage, so no npm build step is needed and
+ * the app stays a pure `pip install streamlit` dependency.
+ * ------------------------------------------------------------------ */
+const Streamlit = {
+  ready() {
+    window.parent.postMessage(
+      { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 }, "*");
+  },
+  setHeight(h) {
+    window.parent.postMessage(
+      { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height: h }, "*");
+  },
+  setValue(v) {
+    window.parent.postMessage(
+      { isStreamlitMessage: true, type: "streamlit:setComponentValue", value: v, dataType: "json" }, "*");
+  },
+};
+
+const SEEK_SMALL = 5;      // seconds, left/right arrows
+const SEEK_BIG = 30;       // seconds, up/down arrows
+
+const stage   = document.getElementById("stage");
+const vid     = document.getElementById("vid");
+const overlay = document.getElementById("overlay");
+const ovTitle = document.getElementById("ov-title");
+const ovBody  = document.getElementById("ov-body");
+const flash   = document.getElementById("flash");
+const pausedEl= document.getElementById("paused");
+const bar     = document.getElementById("bar");
+const barFill = document.getElementById("bar-fill");
+const hintL   = document.getElementById("hint-left");
+const warn    = document.getElementById("warn");
+const errBox  = document.getElementById("err");
+
+let token = null;          // identifies this viewing; guards against restarts
+let started = false;
+let finished = false;
+let marks = [];            // {t_video, t_wall} per Enter press
+let blurEvents = 0;        // times the participant left the tab/window
+let pauseCount = 0;
+let seekCount = 0;
+let maxReached = 0;        // furthest point actually reached
+let startedWallMs = null;
+
+/* Chrome below the video inside this frame: bar + hint + key legend. */
+const CHROME_PX = 74;
+/* Breathing room so the parent page never gains a scrollbar. */
+const SAFETY_PX = 12;
+
+/* How far down the parent page this iframe starts -- Streamlit's header plus
+   whatever the app renders above the player. Measured rather than guessed,
+   because it changes with the heading text and the Streamlit version. */
+function frameTop() {
+  try {
+    const fe = window.frameElement;
+    if (fe) return Math.max(0, fe.getBoundingClientRect().top);
+  } catch (e) { /* cross-origin: fall through */ }
+  return 150;
+}
+
+function viewportHeight() {
+  try {
+    const h = window.parent.innerHeight;
+    if (h && h > 200) return h;
+  } catch (e) { /* cross-origin: fall through */ }
+  return window.screen.availHeight || 800;
+}
+
+function syncHeight() {
+  const avail = viewportHeight() - frameTop() - CHROME_PX - SAFETY_PX;
+  const target = Math.max(240, avail);
+  stage.style.height = target + "px";
+  Streamlit.setHeight(target + CHROME_PX);
+}
+
+function fmt(sec) {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function redrawTicks() {
+  for (const el of bar.querySelectorAll(".tick")) el.remove();
+  if (!vid.duration) return;
+  for (const m of marks) {
+    const el = document.createElement("div");
+    el.className = "tick";
+    el.style.left = (100 * m.t_video / vid.duration) + "%";
+    bar.appendChild(el);
+  }
+}
+
+function updateHint() {
+  if (!vid.duration) return;
+  barFill.style.width = (100 * vid.currentTime / vid.duration) + "%";
+  const n = marks.length;
+  hintL.textContent =
+    `${fmt(vid.currentTime)} / ${fmt(vid.duration)}  -  ${n} boundar${n === 1 ? "y" : "ies"} marked`;
+}
+
+function render(args) {
+  // Only (re)configure on a genuinely new viewing. Streamlit re-sends render
+  // messages on every rerun, and we must never restart a video mid-viewing.
+  if (args.token === token) { syncHeight(); return; }
+
+  token = args.token;
+  started = false; finished = false;
+  marks = []; blurEvents = 0; pauseCount = 0; seekCount = 0;
+  maxReached = 0; startedWallMs = null;
+
+  vid.muted = !!args.muted;
+  vid.src = args.video_url;
+  vid.load();
+
+  ovTitle.textContent = args.title || "Click here to start";
+  ovBody.textContent = args.subtitle || "";
+  overlay.classList.remove("hidden");
+  pausedEl.classList.remove("on");
+  barFill.style.width = "0%";
+  redrawTicks();
+  warn.textContent = "";
+  errBox.style.display = "none";
+  hintL.textContent = "Not started";
+  syncHeight();
+}
+
+function start() {
+  if (started || finished) return;
+  started = true;
+  startedWallMs = Date.now();
+  overlay.classList.add("hidden");
+  stage.focus();
+  vid.play().catch((e) => {
+    errBox.style.display = "block";
+    errBox.textContent = "Could not start playback: " + e.message +
+      ". Try a different browser (Chrome or Firefox).";
+  });
+}
+
+function mark() {
+  if (!started || finished) return;
+  marks.push({
+    t_video: Number(vid.currentTime.toFixed(3)),
+    t_wall: Number(((Date.now() - startedWallMs) / 1000).toFixed(3)),
+  });
+  flash.classList.remove("on");
+  void flash.offsetWidth;          // restart the CSS animation
+  flash.classList.add("on");
+  redrawTicks();
+  updateHint();
+}
+
+function undoMark() {
+  if (!started || finished || !marks.length) return;
+  const gone = marks.pop();
+  redrawTicks();
+  updateHint();
+  warn.textContent = `Removed the mark at ${fmt(gone.t_video)}.`;
+  setTimeout(() => {
+    if (warn.textContent.startsWith("Removed the mark")) warn.textContent = "";
+  }, 2500);
+}
+
+function togglePlay() {
+  if (!started || finished) return;
+  if (vid.paused) vid.play().catch(() => {});
+  else vid.pause();
+}
+
+function seekBy(delta) {
+  if (!started || finished || !vid.duration) return;
+  seekCount += 1;
+  vid.currentTime = Math.min(vid.duration - 0.05,
+                             Math.max(0, vid.currentTime + delta));
+}
+
+function finish() {
+  if (finished) return;
+  finished = true;
+  barFill.style.width = "100%";
+  pausedEl.classList.remove("on");
+  hintL.textContent = "Viewing complete - saving...";
+  // Marks are sent in the order they were pressed. With seeking enabled that
+  // is not necessarily time order, so anything downstream must sort by
+  // boundary_sec rather than assume it.
+  Streamlit.setValue({
+    token: token,
+    status: "completed",
+    presses: marks,
+    n_presses: marks.length,
+    video_duration_sec: Number((vid.duration || 0).toFixed(3)),
+    elapsed_sec: Number(((Date.now() - startedWallMs) / 1000).toFixed(3)),
+    blur_events: blurEvents,
+    pause_count: pauseCount,
+    seek_count: seekCount,
+    max_time_reached_sec: Number(maxReached.toFixed(3)),
+  });
+}
+
+overlay.addEventListener("click", start);
+
+// Listen on the document, not on #stage: events bubble up, so a listener on
+// #stage would silently stop firing the moment focus moved to any other
+// element inside this frame.
+document.addEventListener("keydown", (e) => {
+  if (!started) {
+    // Any of the transport keys also starts the video.
+    if (e.key === "Enter" || e.code === "Space" || e.key.startsWith("Arrow")) {
+      e.preventDefault();
+      start();
+    }
+    return;
+  }
+  switch (e.key) {
+    case "Enter":
+      e.preventDefault();
+      if (!e.repeat) mark();        // held key must not spray boundaries
+      break;
+    case " ":
+      e.preventDefault();
+      if (!e.repeat) togglePlay();
+      break;
+    case "ArrowLeft":  e.preventDefault(); seekBy(-SEEK_SMALL); break;
+    case "ArrowRight": e.preventDefault(); seekBy(+SEEK_SMALL); break;
+    case "ArrowUp":    e.preventDefault(); seekBy(+SEEK_BIG);   break;
+    case "ArrowDown":  e.preventDefault(); seekBy(-SEEK_BIG);   break;
+    case "Backspace":
+      e.preventDefault();
+      if (!e.repeat) undoMark();
+      break;
+    default:
+      if (e.code === "Space") { e.preventDefault(); if (!e.repeat) togglePlay(); }
+  }
+});
+
+// Click anywhere on the scrub bar to jump there.
+bar.addEventListener("click", (e) => {
+  if (!started || finished || !vid.duration) return;
+  const r = bar.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  seekCount += 1;
+  vid.currentTime = frac * vid.duration;
+  stage.focus();
+});
+
+vid.addEventListener("play",  () => pausedEl.classList.remove("on"));
+vid.addEventListener("pause", () => {
+  if (started && !finished && !vid.ended) {
+    pauseCount += 1;
+    pausedEl.classList.add("on");
+  }
+});
+vid.addEventListener("timeupdate", () => {
+  if (!vid.duration) return;
+  if (vid.currentTime > maxReached) maxReached = vid.currentTime;
+  updateHint();
+  // Safety net: a stall in the last fraction of a second would otherwise
+  // strand the participant at the end of a long viewing with no way out.
+  if (started && !finished && vid.currentTime >= vid.duration - 0.25) finish();
+});
+vid.addEventListener("ended", finish);
+vid.addEventListener("loadedmetadata", () => { redrawTicks(); updateHint(); });
+vid.addEventListener("error", () => {
+  errBox.style.display = "block";
+  errBox.textContent = "Video failed to load. Check that static/videos/ is populated " +
+    "(run: python scripts/prepare_stimuli.py).";
+  syncHeight();
+});
+
+// Buffering notice, so a frozen picture is never mistaken for a pause.
+let stallTimer = null;
+vid.addEventListener("waiting", () => {
+  if (!started || finished) return;
+  clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => {
+    if (started && !finished && !vid.paused) {
+      warn.textContent = "Still buffering...";
+    }
+  }, 5000);
+});
+vid.addEventListener("playing", () => {
+  clearTimeout(stallTimer);
+  if (warn.textContent.startsWith("Still buffering")) warn.textContent = "";
+});
+
+// Track attention lapses as a data-quality flag rather than blocking them.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && started && !finished) blurEvents += 1;
+});
+window.addEventListener("blur", () => {
+  if (started && !finished) warn.textContent = "Click the video to restore keyboard focus.";
+});
+stage.addEventListener("focus", () => {
+  if (warn.textContent.startsWith("Click the video")) warn.textContent = "";
+});
+// Clicking anywhere on the stage restores focus, so keys keep registering.
+stage.addEventListener("click", () => stage.focus());
+
+window.addEventListener("message", (event) => {
+  if (event.data.type === "streamlit:render") render(event.data.args);
+});
+window.addEventListener("resize", syncHeight);
+try { window.parent.addEventListener("resize", syncHeight); } catch (e) {}
+
+Streamlit.ready();
+syncHeight();
+</script>
+</body>
+</html>
