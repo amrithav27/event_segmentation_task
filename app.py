@@ -102,33 +102,24 @@ def stimulus_by_id(video_id: str) -> storage.Stimulus:
 
 
 def static_serving_ok() -> bool:
-    """Stop early, and loudly, if the videos cannot possibly be served.
+    """Fail loudly if Streamlit is not serving ``static/videos/``.
 
-    ``server.enableStaticServing`` is off by default, and with it off every
-    request for ``/app/static/videos/*.mp4`` quietly returns Streamlit's own
-    index.html. The player then shows a black rectangle with no useful error,
-    which is a miserable thing to debug on a participant's machine. The
-    setting normally comes from ``.streamlit/config.toml``; ``run.py`` sets it
-    too, for when that file did not survive being copied around.
+    With ``server.enableStaticServing`` off, every request for a video gets
+    the app's own index.html back instead, and the player shows a black
+    rectangle with no hint as to why. The option can only be set before the
+    server starts, so all this can do is check it and say what is missing.
     """
     if st.get_option("server.enableStaticServing"):
         return True
 
     st.error("Streamlit is not serving the video files, so no video can play.")
     st.markdown(
-        "Stop the app and start it with `run.py`, which turns static file "
-        "serving on for you. It works the same on Windows, macOS and Linux:"
-        "\n\n"
-        "```\n"
-        "uv run python run.py      # with uv\n"
-        "python run.py             # without uv\n"
-        "```\n\n"
-        "Or pass the option to Streamlit yourself:\n\n"
+        "`.streamlit/config.toml` is missing - it is a hidden folder, so some "
+        "ways of copying a project leave it behind. Restore it, or start the "
+        "app with:\n\n"
         "```\n"
         "streamlit run app.py --server.enableStaticServing=true\n"
-        "```\n\n"
-        "This usually means `.streamlit/config.toml` is missing - it lives in "
-        "a hidden folder, so some ways of copying a project leave it behind."
+        "```"
     )
     return False
 

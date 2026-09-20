@@ -429,9 +429,8 @@ function diagnose() {
       } else if (type.startsWith("text/html")) {
         errBox.textContent =
           "The server is not serving video files, so the app returned a web " +
-          "page instead of the video. Stop the app and restart it with " +
-          "'uv run python run.py' (or 'python run.py' without uv). " +
-          "See 'If the video does not play' in the README.";
+          "page instead of the video - .streamlit/config.toml is probably " +
+          "missing. See 'If the video does not play' in the README.";
       } else if (!r.ok) {
         errBox.textContent =
           "Video failed to load (HTTP " + r.status + ") from " + vid.src + ".";

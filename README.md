@@ -13,7 +13,7 @@ runs the same way on Windows, macOS and Linux.
 
    ```
    uv sync
-   uv run python run.py
+   uv run streamlit run app.py
    ```
 
 ## Install and run with pip
@@ -38,14 +38,11 @@ runs the same way on Windows, macOS and Linux.
 
    ```
    python -m pip install -r requirements.txt
-   python run.py
+   streamlit run app.py
    ```
 
 The app opens at <http://localhost:8501>. Leave the terminal window open while
 you work - closing it stops the app. Press Ctrl+C there when you are done.
-
-Start it with `python run.py` rather than `streamlit run app.py`: it switches
-on the file serving the videos need, whichever operating system you are on.
 
 ## Before you start
 
@@ -57,23 +54,17 @@ will not run without them.
 
 The page loads and the buttons work, but the video area stays black:
 
-* **Start the app with `run.py`**, not `streamlit run app.py`:
-
-  ```
-  uv run python run.py      # with uv
-  python run.py             # without uv
-  ```
-
-  If you would rather use the Streamlit command, it needs an extra option:
+* Check that **`.streamlit/config.toml` is present**. It is what lets the app
+  serve the videos, and `.streamlit` is a hidden folder, so it is easily lost
+  if the project was copied by hand or unzipped selectively - on Windows, turn
+  on **View > Hidden items** in File Explorer to see it. If it is gone, start
+  the app with the setting instead:
 
   ```
   streamlit run app.py --server.enableStaticServing=true
   ```
 
-* Check `static/videos/` really holds the four `.mp4` files, and that
-  `.streamlit/config.toml` is present. `.streamlit` is a hidden folder, so it
-  is easily lost if the project was copied by hand or unzipped selectively -
-  on Windows, turn on **View > Hidden items** in File Explorer to see it.
+* Check `static/videos/` really holds the four `.mp4` files.
 * Use Chrome, Edge or Firefox. Safari and Internet Explorer are not supported.
 * Click **Click to begin** on the video before pressing any keys - that click
   is what gives the player keyboard focus.
