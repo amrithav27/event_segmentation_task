@@ -37,12 +37,17 @@ MUTE_VIDEO = True
 
 # ------------------------------------------------------- practice limits ----
 
-#: Accepted press counts on the practice clip, as presses per minute. A
-#: participant outside this band is asked to redo the practice, exactly as the
-#: PsychoPy version did with its fixed 1-4 window on a 106 s clip.
+#: Accepted mark counts on the practice clip, as marks per minute.
+#:
+#: The practice clip is the one from the PsychoPy study in
+#: ``../pooja_experiment``, so these reproduce the thresholds that study's code
+#: hard-codes for this exact clip: coarse 1-4 and fine 5-10 (see
+#: ``segmentation_exp_lab_lastrun.py``, the ``lower``/``upper`` pairs). Stated
+#: as rates rather than counts so they still mean something if the clip is
+#: swapped.
 PRACTICE_RATE_BOUNDS = {
-    "coarse": (0.5, 2.0),   # 1-4 presses on the 106 s practice clip
-    "fine": (2.0, 7.0),     # 3-13 presses on the 106 s practice clip
+    "coarse": (0.5, 2.0),   # 1-4 marks on the 106 s practice clip
+    "fine": (3.0, 5.5),     # 5-10 marks on the 106 s practice clip
 }
 
 #: How many times a participant may fail the practice before the app lets them

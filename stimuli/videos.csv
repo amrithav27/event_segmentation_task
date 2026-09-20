@@ -1,5 +1,5 @@
 video_id,clip_uid,source_video_uid,source,split,duration_sec,domain,role
-practice,,ae03efc8-6d45-4013-b834-33729283992f,video_540ss,none,106,practice_clip_not_in_moments,practice
+practice,,../pooja_experiment/segmentation_task/lab_video/test_video_1.mp4,local,none,106,pooja_practice_clip,practice
 V01,9df49083-577b-43f9-9874-6e4b21f104b4,dd08bc58-b614-4ba7-b883-a213560621dd,clip_256ss,train,349,kitchen_cleaning_desk_work,main
 V02,fbafc354-121f-40f1-a553-bbae0d2f66ed,59dac266-4b43-43b1-9fe3-6013ade33eb6,clip_256ss,train,480,cooking_dough,main
 V03,,8e7cb14a-216a-4b10-8883-df789a5ec9d9,video_540ss,train,1075,carpentry_measuring_cutting,main

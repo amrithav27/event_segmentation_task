@@ -84,7 +84,9 @@ to save your progress so far.
 
 ## When you are done
 
-Click **Download all my data (.zip)** and send me the file.
+Click **Download all my data (.zip)** and send me the file. It contains your
+marks for all eight viewings — the two practice clips and both passes over
+each of the three videos.
 
 In case of any questions, you can contact me.
 

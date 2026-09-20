@@ -108,11 +108,14 @@ def main() -> int:
             skipped.append(video_id)
             continue
 
-        # `source` says which Ego4D download the file comes from: an 8-minute
-        # moments clip, or a full video (the only way to get a stimulus longer
-        # than 480 s -- see README, "Why no clip is longer than 8 minutes").
+        # `source` says where the file comes from: an 8-minute Ego4D moments
+        # clip, a full Ego4D video (the only way to get a stimulus longer than
+        # 480 s -- see "Why no clip is longer than 8 minutes"), or `local`, a
+        # path relative to this project for a file we already have on disk.
         if row["source"] == "clip_256ss":
             src = clip_dir / f"{row['clip_uid']}.mp4"
+        elif row["source"] == "local":
+            src = (ROOT / row["source_video_uid"]).resolve()
         else:
             src = video_dir / f"{row['source_video_uid']}.mp4"
 
@@ -125,7 +128,10 @@ def main() -> int:
         # audio track; a stream copy would leave the stimulus set mixed between
         # VP9 and H.264, and VP9-in-MP4 is not reliably playable outside
         # Chrome and Firefox. Uniform H.264, silent, is worth the CPU.
-        if row["role"] == "practice":
+        # A `local` practice clip is already exactly the clip we want, so it
+        # is only downscaled. An Ego4D source has to be cut down to length
+        # first.
+        if row["role"] == "practice" and row["source"] != "local":
             stage_downscaled(src, dst, start=PRACTICE_START_SEC,
                              duration=float(row["duration_sec"]))
         else:

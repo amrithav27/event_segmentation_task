@@ -27,20 +27,24 @@ from datetime import datetime, timezone
 
 import config
 
-#: 2.x records playback-control fields and uses ENTER to mark, so its
-#: viewings.csv is not column-compatible with 1.x output.
-APP_VERSION = "2.0.0"
+#: 3.x adds `role` and `attempt` columns and records the practice viewings
+#: alongside the main ones, so its CSVs are not column-compatible with 2.x.
+APP_VERSION = "3.0.0"
 
+#: ``role`` separates the two practice viewings from the six that are data.
+#: ``attempt`` is >1 only when a practice trial was redone; the accepted run is
+#: the highest attempt for that granularity.
 VIEWING_FIELDS = [
-    "participant_id", "block_index", "video_id", "granularity",
-    "viewing_in_block", "n_presses", "video_duration_sec", "elapsed_sec",
-    "blur_events", "pause_count", "seek_count", "max_time_reached_sec",
-    "completed_utc",
+    "participant_id", "role", "block_index", "video_id", "granularity",
+    "viewing_in_block", "attempt", "n_presses", "video_duration_sec",
+    "elapsed_sec", "blur_events", "pause_count", "seek_count",
+    "max_time_reached_sec", "completed_utc",
 ]
 
 BOUNDARY_FIELDS = [
-    "participant_id", "block_index", "video_id", "granularity",
-    "viewing_in_block", "press_index", "boundary_sec", "wall_clock_sec",
+    "participant_id", "role", "block_index", "video_id", "granularity",
+    "viewing_in_block", "attempt", "press_index", "boundary_sec",
+    "wall_clock_sec",
 ]
 
 VALID_PID = re.compile(r"^[A-Za-z0-9_-]{2,32}$")
@@ -209,9 +213,16 @@ class Store:
             return list(csv.DictReader(fh))
 
     def n_completed(self) -> int:
-        return len(self.completed_viewings())
+        """How many *main* viewings are done -- the resume position.
 
-    def record_viewing(self, step: dict, result: dict) -> None:
+        Practice rows live in the same file but must never advance the
+        schedule, so they are excluded here.
+        """
+        return sum(1 for v in self.completed_viewings()
+                   if v.get("role", "main") == "main")
+
+    def record_viewing(self, step: dict, result: dict, role: str = "main",
+                       attempt: int = 1) -> None:
         """Append one finished viewing and all of its boundary marks.
 
         Written together and only on completion, so the two CSVs can never
@@ -228,20 +239,51 @@ class Store:
             writer = csv.writer(fh)
             for i, press in enumerate(presses, start=1):
                 writer.writerow([
-                    self.participant_id, step["block_index"], step["video_id"],
-                    step["granularity"], step["viewing_in_block"], i,
+                    self.participant_id, role, step["block_index"],
+                    step["video_id"], step["granularity"],
+                    step["viewing_in_block"], attempt, i,
                     press["t_video"], press["t_wall"],
                 ])
 
         with self.viewings_path.open("a", newline="", encoding="utf-8") as fh:
             csv.writer(fh).writerow([
-                self.participant_id, step["block_index"], step["video_id"],
-                step["granularity"], step["viewing_in_block"], len(presses),
+                self.participant_id, role, step["block_index"],
+                step["video_id"], step["granularity"],
+                step["viewing_in_block"], attempt, len(presses),
                 result.get("video_duration_sec", ""), result.get("elapsed_sec", ""),
                 result.get("blur_events", 0), result.get("pause_count", 0),
                 result.get("seek_count", 0), result.get("max_time_reached_sec", ""),
                 utc_now(),
             ])
+
+    def record_practice(self, step: dict, result: dict, attempt: int) -> None:
+        """Store the *accepted* practice run, replacing any earlier one.
+
+        Only the accepted attempt is kept, so rejected runs never reach disk.
+        The replace matters for a participant who quits mid-practice and
+        resumes: practice restarts from scratch, and without this the
+        abandoned run would be left behind alongside the new one.
+        """
+        self._drop_practice(step["granularity"])
+        self.record_viewing(step, result, role="practice", attempt=attempt)
+
+    def _drop_practice(self, granularity: str) -> None:
+        """Remove any stored practice rows for one granularity, both files."""
+        for path, fields in ((self.viewings_path, VIEWING_FIELDS),
+                             (self.boundaries_path, BOUNDARY_FIELDS)):
+            if not path.exists():
+                continue
+            with path.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+            keep = [r for r in rows
+                    if not (r.get("role") == "practice"
+                            and r.get("granularity") == granularity)]
+            if len(keep) == len(rows):
+                continue
+            with path.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(keep)
 
     # -- export -------------------------------------------------------------
 

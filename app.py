@@ -252,6 +252,8 @@ def screen_practice_viewing() -> None:
     if is_new_result(result):
         ss()["practice_attempts"][granularity] = attempt
         ss()["practice_result"] = result
+        # Not written here: only the accepted attempt is kept, so the CSV
+        # write happens in screen_practice_feedback once the outcome is known.
         goto("practice_feedback")
 
 
@@ -301,6 +303,19 @@ def screen_practice_feedback() -> None:
         )
 
     if outcome == "passed" or forced:
+        # This attempt is the one that counts, so it is the one stored. Earlier
+        # rejected runs are deliberately discarded -- they are people finding
+        # the keys, not annotations. `attempt` records which run this was.
+        stored = ss().setdefault("practice_stored", set())
+        if granularity not in stored:
+            stored.add(granularity)
+            ss()["store"].record_practice(
+                {"block_index": 0, "video_id": ss()["practice"].video_id,
+                 "granularity": granularity,
+                 "viewing_in_block": ss()["practice_index"] + 1},
+                result, attempt=attempt,
+            )
+
         last = ss()["practice_index"] == len(PRACTICE_ORDER) - 1
         label = "Start the experiment" if last else "Continue to the next practice"
         if st.button(label, type="primary"):

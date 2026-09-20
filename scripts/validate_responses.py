@@ -38,8 +38,14 @@ def check_participant(pdir: Path) -> tuple[list[str], dict]:
         return [f"{pdir.name}: no session.json"], {}
 
     session = json.loads(session_path.read_text(encoding="utf-8"))
-    viewings = read_csv(pdir / "viewings.csv")
-    boundaries = read_csv(pdir / "boundaries.csv")
+    all_viewings = read_csv(pdir / "viewings.csv")
+    all_boundaries = read_csv(pdir / "boundaries.csv")
+
+    # Practice rows share the files but are not data: they must not count
+    # toward progress, and the main-viewing checks do not apply to them.
+    viewings = [v for v in all_viewings if v.get("role", "main") == "main"]
+    boundaries = [b for b in all_boundaries if b.get("role", "main") == "main"]
+    practice = [v for v in all_viewings if v.get("role") == "practice"]
 
     total = len(session["schedule"])
     done = len(viewings)
@@ -135,6 +141,8 @@ def check_participant(pdir: Path) -> tuple[list[str], dict]:
         "boundaries": len(boundaries),
         "pauses": sum(int(v.get("pause_count") or 0) for v in viewings),
         "seeks": sum(int(v.get("seek_count") or 0) for v in viewings),
+        "practice_rows": len(practice),
+        "practice_marks": sum(int(v.get("n_presses") or 0) for v in practice),
         "first_granularity": first_granularity,
     }
     return problems, summary
@@ -160,14 +168,14 @@ def main() -> int:
             summaries.append(summary)
 
     print(f"{'participant':<16}{'progress':>10}{'marks':>8}{'pauses':>8}"
-          f"{'seeks':>7}{'compr.':>8}{'practice':>10}")
-    print("-" * 70)
+          f"{'seeks':>7}{'compr.':>8}{'prac.runs':>11}{'prac.marks':>12}")
+    print("-" * 82)
     for s in summaries:
         flag = "" if s["complete"] else "  <- incomplete"
         print(f"{s['participant_id']:<16}{s['done']}/{s['total']:>8}"
               f"{s['boundaries']:>8}{s['pauses']:>8}{s['seeks']:>7}"
               f"{str(s['comprehension_attempts']):>8}"
-              f"{s['practice_attempts']:>10}{flag}")
+              f"{s['practice_rows']:>11}{s['practice_marks']:>12}{flag}")
 
     # Realised counterbalancing: which granularity each video was first seen at.
     balance: dict[str, Counter] = defaultdict(Counter)
