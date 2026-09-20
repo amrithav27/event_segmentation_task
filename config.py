@@ -22,17 +22,12 @@ N_MAIN_VIDEOS = 3
 #: Each video is viewed once per granularity, back to back.
 GRANULARITIES = ("coarse", "fine")
 
-#: Key participants press to mark a boundary. SPACE is the transport
-#: play/pause toggle instead, so marking uses ENTER.
-RESPONSE_KEY = "Enter"
+#: Key participants press to mark a boundary, as shown in the instructions.
+#: SPACE is the transport play/pause toggle instead, so marking uses ENTER.
 RESPONSE_KEY_NAME = "ENTER"
 
-#: Playback controls offered during a viewing. Setting this to False would
-#: also mean reverting the player to its no-controls form.
-ALLOW_PLAYBACK_CONTROLS = True
-
-#: Videos play muted -- Ego4D audio is uninformative here and muting also keeps
-#: browsers from blocking autoplay.
+#: The staged videos carry no audio track, but muting is also what keeps
+#: browsers from blocking playback.
 MUTE_VIDEO = True
 
 # ------------------------------------------------------- practice limits ----

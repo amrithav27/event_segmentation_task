@@ -3,47 +3,86 @@
 You will watch short first-person videos of everyday activities and mark, as you
 watch, where you think one event ends and the next begins.
 
-This app requires Python 3.10 or later, and **Chrome or Firefox**.
+This app requires Python 3.10 or later, and **Chrome, Edge or Firefox**. It
+runs the same way on Windows, macOS and Linux.
 
 ## Install and run with uv
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
 2. From this directory, run:
 
-   ```bash
+   ```
    uv sync
-   uv run streamlit run app.py
+   uv run python run.py
    ```
 
 ## Install and run with pip
 
 1. Create and activate a virtual environment from this directory:
 
+   **Linux / macOS**
+
    ```bash
    python3 -m venv .venv
-   source .venv/bin/activate        # Windows: .venv\Scripts\activate
+   source .venv/bin/activate
+   ```
+
+   **Windows** (PowerShell)
+
+   ```powershell
+   py -3 -m venv .venv
+   .venv\Scripts\Activate.ps1
    ```
 
 2. Install the dependencies and start the app:
 
-   ```bash
+   ```
    python -m pip install -r requirements.txt
-   streamlit run app.py
+   python run.py
    ```
 
-The app opens at <http://localhost:8501>.
+The app opens at <http://localhost:8501>. Leave the terminal window open while
+you work - closing it stops the app. Press Ctrl+C there when you are done.
+
+Start it with `python run.py` rather than `streamlit run app.py`: it switches
+on the file serving the videos need, whichever operating system you are on.
 
 ## Before you start
 
-Put the video files you were sent into `static/videos/`, so that the folder
-contains `practice.mp4`, `V01.mp4`, `V02.mp4` and `V03.mp4`. The app will not
-run without them.
+Check that `static/videos/` contains `practice.mp4`, `V01.mp4`, `V02.mp4` and
+`V03.mp4`. If the videos were sent to you separately, put them there. The app
+will not run without them.
+
+## If the video does not play
+
+The page loads and the buttons work, but the video area stays black:
+
+* **Start the app with `run.py`**, not `streamlit run app.py`:
+
+  ```
+  uv run python run.py      # with uv
+  python run.py             # without uv
+  ```
+
+  If you would rather use the Streamlit command, it needs an extra option:
+
+  ```
+  streamlit run app.py --server.enableStaticServing=true
+  ```
+
+* Check `static/videos/` really holds the four `.mp4` files, and that
+  `.streamlit/config.toml` is present. `.streamlit` is a hidden folder, so it
+  is easily lost if the project was copied by hand or unzipped selectively -
+  on Windows, turn on **View > Hidden items** in File Explorer to see it.
+* Use Chrome, Edge or Firefox. Safari and Internet Explorer are not supported.
+* Click **Click to begin** on the video before pressing any keys - that click
+  is what gives the player keyboard focus.
 
 ## Doing the task
 
 Use the **Participant ID** given to you to log in.
 
-You will get instructions, a short comprehension check, two practice clips, and
+You will get instructions, a short comprehension check, two practice runs, and
 then the videos themselves. **Press ENTER every time you feel one event has
 ended and another has begun.**
 
@@ -85,7 +124,7 @@ to save your progress so far.
 ## When you are done
 
 Click **Download all my data (.zip)** and send me the file. It contains your
-marks for all eight viewings — the two practice clips and both passes over
+marks for all eight viewings — the two practice runs and both passes over
 each of the three videos.
 
 In case of any questions, you can contact me.

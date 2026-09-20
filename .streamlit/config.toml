@@ -1,0 +1,8 @@
+# Videos in static/videos/ are served at /app/static/videos/<file>.mp4 so the
+# player can stream them progressively. Without this the URL silently falls
+# back to Streamlit's index.html and the video area stays black.
+[server]
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false

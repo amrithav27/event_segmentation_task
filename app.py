@@ -101,6 +101,38 @@ def stimulus_by_id(video_id: str) -> storage.Stimulus:
     return next(s for s in ss()["main"] if s.video_id == video_id)
 
 
+def static_serving_ok() -> bool:
+    """Stop early, and loudly, if the videos cannot possibly be served.
+
+    ``server.enableStaticServing`` is off by default, and with it off every
+    request for ``/app/static/videos/*.mp4`` quietly returns Streamlit's own
+    index.html. The player then shows a black rectangle with no useful error,
+    which is a miserable thing to debug on a participant's machine. The
+    setting normally comes from ``.streamlit/config.toml``; ``run.py`` sets it
+    too, for when that file did not survive being copied around.
+    """
+    if st.get_option("server.enableStaticServing"):
+        return True
+
+    st.error("Streamlit is not serving the video files, so no video can play.")
+    st.markdown(
+        "Stop the app and start it with `run.py`, which turns static file "
+        "serving on for you. It works the same on Windows, macOS and Linux:"
+        "\n\n"
+        "```\n"
+        "uv run python run.py      # with uv\n"
+        "python run.py             # without uv\n"
+        "```\n\n"
+        "Or pass the option to Streamlit yourself:\n\n"
+        "```\n"
+        "streamlit run app.py --server.enableStaticServing=true\n"
+        "```\n\n"
+        "This usually means `.streamlit/config.toml` is missing - it lives in "
+        "a hidden folder, so some ways of copying a project leave it behind."
+    )
+    return False
+
+
 # --------------------------------------------------------------- login ------
 
 def screen_login(main, practice_stim) -> None:
@@ -466,7 +498,7 @@ def sidebar(stage: str) -> None:
         return
     # Hidden mid-viewing: any sidebar widget triggers a rerun, and we keep the
     # page inert while a video is playing.
-    if stage in ("viewing", "practice_viewing"):
+    if stage in VIEWING_STAGES:
         st.sidebar.markdown("### Viewing in progress")
         st.sidebar.caption(
             "ENTER marks a boundary, SPACE pauses, arrow keys seek. "
@@ -508,6 +540,9 @@ SCREENS = {
 
 
 def main() -> None:
+    if not static_serving_ok():
+        return
+
     try:
         main_videos, practice_stim = storage.load_stimuli()
     except FileNotFoundError as exc:

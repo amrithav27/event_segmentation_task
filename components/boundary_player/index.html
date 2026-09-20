@@ -410,12 +410,47 @@ vid.addEventListener("timeupdate", () => {
 });
 vid.addEventListener("ended", finish);
 vid.addEventListener("loadedmetadata", () => { redrawTicks(); updateHint(); });
-vid.addEventListener("error", () => {
+/* Work out *why* a video would not load and say so, rather than leaving the
+   participant with a black rectangle. The common cause is Streamlit's static
+   file server being off, in which case the URL answers 200 with the app's own
+   index.html instead of the mp4 -- indistinguishable from a black screen
+   unless you look at the response. */
+function diagnose() {
   errBox.style.display = "block";
-  errBox.textContent = "Video failed to load. Check that static/videos/ is populated " +
-    "(run: python scripts/prepare_stimuli.py).";
+  errBox.textContent = "Video failed to load. Checking why...";
   syncHeight();
-});
+  fetch(vid.src, { method: "GET", headers: { Range: "bytes=0-0" } })
+    .then((r) => {
+      const type = (r.headers.get("content-type") || "").toLowerCase();
+      if (r.status === 404) {
+        errBox.textContent =
+          "Video file not found: " + vid.src + " - check that static/videos/ " +
+          "contains the four .mp4 files you were sent.";
+      } else if (type.startsWith("text/html")) {
+        errBox.textContent =
+          "The server is not serving video files, so the app returned a web " +
+          "page instead of the video. Stop the app and restart it with " +
+          "'uv run python run.py' (or 'python run.py' without uv). " +
+          "See 'If the video does not play' in the README.";
+      } else if (!r.ok) {
+        errBox.textContent =
+          "Video failed to load (HTTP " + r.status + ") from " + vid.src + ".";
+      } else {
+        errBox.textContent =
+          "The browser could not play this video file. Try Chrome, Edge or " +
+          "Firefox.";
+      }
+      syncHeight();
+    })
+    .catch(() => {
+      errBox.textContent =
+        "Video failed to load from " + vid.src + ". Check that the app is " +
+        "still running and that static/videos/ is populated.";
+      syncHeight();
+    });
+}
+
+vid.addEventListener("error", diagnose);
 
 // Buffering notice, so a frozen picture is never mistaken for a pause.
 let stallTimer = null;
