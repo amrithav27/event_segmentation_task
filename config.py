@@ -78,43 +78,36 @@ Participant ID - your progress is saved automatically.
 TASK_OVERVIEW = f"""
 ### What you will do
 
-You will see **{N_MAIN_VIDEOS} videos**, of quite different lengths. You watch **each video twice, back to back**:
-
-* once marking **coarse** (large) event boundaries, and
-* once marking **fine** (small) event boundaries.
-
-The order of the two viewings, and the order of the videos, is different for
-every participant.
+You will see **{N_MAIN_VIDEOS} videos** of quite different lengths, and watch
+**each one twice, back to back** - once marking coarse (large) boundaries and
+once marking fine (small) ones. The order of the videos, and of the two
+viewings, is different for every participant.
 
 While a video plays, press **{RESPONSE_KEY_NAME}** every time you believe a
 meaningful unit of activity has ended and another has begun.
 
-**You control playback:**
-
 | key | does |
 |---|---|
-| **ENTER** | mark a boundary |
+| **{RESPONSE_KEY_NAME}** | mark a boundary |
 | **SPACE** | play / pause |
 | **LEFT ARROW** | rewind {REWIND_STEP_SEC} seconds |
 | **BACKSPACE** | remove the mark you just made |
 
+There is no way to skip forward - you will see all of every video.
 
-**Rewinding.** If you think you missed a boundary, or want to check one
-again, rewind with the **LEFT ARROW** and watch that stretch again. You can
-press **{RESPONSE_KEY_NAME}** while rewound, or while paused - a mark is
-recorded wherever the video is sitting, not only during normal playback.
+**Rewinding.** If you think you missed a boundary, rewind and watch that
+stretch again. You can press **{RESPONSE_KEY_NAME}** while rewound or while
+paused: a mark is recorded wherever the video is sitting, not only during
+normal playback.
 
-**Fixing the timing of a mark.** Your marks appear as orange handles on the
-wide bar under the video. You might press a moment *after* the change
-you noticed, because it takes a moment to react. To correct that, **drag a
-handle left or right** (up to {MARK_DRAG_LIMIT_SEC:.0f} seconds) until it sits
-where the change actually happened. 
+**Fixing the timing.** Marks appear as orange handles on the wide bar under
+the video. Because it takes a moment to react, a mark usually lands slightly
+*after* the change you noticed - **drag the handle** left or right (up to
+{MARK_DRAG_LIMIT_SEC:.0f} seconds) to put it where the change actually
+happened.
 
-**Important:**
-
-* The videos are **silent** - do not adjust your volume.
-* Mark boundaries as you notice them. Pause or rewind if you need to check
-  something, but don't agonise: we want your intuition, not a perfect answer.
+The videos are **silent**, so there is no need to adjust your volume. Don't
+agonise over exact placement: we want your intuition, not a perfect answer.
 """
 
 #: Shown once, before the comprehension check. The three cues -- goal,
@@ -127,16 +120,16 @@ EVENT_DEFINITION = """
 ### What counts as an event?
 
 As you watch, you build up a picture of what is going on - what the person is
-doing, where they are, what they are handling - and you use it to anticipate
-what comes next.
+doing, where they are, what they are handling - and use it to anticipate what
+comes next.
 
-* An **event** is a stretch of video over which that picture keeps working:
-  things unfold roughly as you would expect.
-* An **event boundary** is the moment it stops working. What happens next is
-  not what the activity so far led you to expect, and you have to start a
-  fresh picture to follow along.
+* An **event** is a stretch of video over which that picture keeps working.
+* An **event boundary** is the moment it stops working: what happens next is
+  not what the activity so far led you to expect, and you need a fresh picture
+  to follow along.
 
-Three things tend to mark a boundary:
+Three things tend to mark a boundary, of which a change of **goal** is the
+strongest:
 
 | what changes | example |
 |---|---|
@@ -145,39 +138,45 @@ Three things tend to mark a boundary:
 | **Entities** - who or what is involved | puts the knife down and picks up a drill; someone walks in |
 
 **A camera movement is not a boundary.** The camera is on the person's head,
-so the view swings around constantly. Mark changes in *what is being done*,
-not changes in what the camera happens to point at.
+so the view swings around constantly. Mark changes in *what is being done*, not
+in what the camera happens to point at.
 """
 
-#: Shown on the overview screen, before the comprehension check, which asks
-#: about both grains. The per-viewing COARSE/FINE_INSTRUCTIONS below repeat
-#: whichever one applies, but they come too late to answer the check on -- and
-#: the nesting only makes sense with the two side by side anyway.
-GRANULARITY_OVERVIEW = """
+#: One worked example, shown twice: on the overview screen with both grains
+#: side by side, so the nesting is visible before the comprehension check asks
+#: about it, and again in the per-viewing instructions below. Defined here once
+#: so the two copies cannot drift apart.
+COARSE_EXAMPLE = (
+    "`Removing all the old bedding` → `Putting on the fresh sheets and "
+    "blankets` → `Placing the pillows back on top`"
+)
+FINE_EXAMPLE = (
+    "`Pulling off the first pillowcase` → `Pulling off the next pillowcase` → "
+    "`Tugging the corner of the fitted sheet` → and so on..."
+)
+#: The coarse event the fine example sits inside.
+FINE_EXAMPLE_PARENT = "Removing all the old bedding"
+
+GRANULARITY_OVERVIEW = f"""
 ### Coarse and fine boundaries
 
 You watch each video twice, marking at two different grains. The instructions
 before each viewing say which one you are doing, so read them - they change.
 
-**Coarse** - the **large** shifts, where one whole part of the activity ends
-and a different one begins. Usually a change of **goal** or **location**.
-These are the points where you would start a new sentence if you were
-describing the video to someone.
+**Coarse** - the **large** shifts, where you would start a new sentence if you
+were describing the video. Making a bed might divide into:
+
+> {COARSE_EXAMPLE}
 
 **Fine** - the **smallest** units that still feel like a complete, meaningful
-thing the person did. These often fall where the **object being handled**
-changes, or where one step of a larger task is finished.
+thing the person did. The single coarse event `{FINE_EXAMPLE_PARENT}` divides
+into:
 
-Fine boundaries sit **inside** the coarse ones. You are dividing the same
-activity more finely, not looking for something different:
+> {FINE_EXAMPLE}
 
-| grain | a kitchen video divides into |
-|---|---|
-| **coarse** | `clearing the table` → `washing up` → `putting the dishes away` |
-| **fine**, inside `washing up` | `fill the sink` → `wash the plates` → `wash the pans` → `drain the sink` |
-
-So over the same video you should expect to press **noticeably more often** in
-the fine viewing than in the coarse one.
+Fine boundaries sit **inside** the coarse ones - the same activity divided more
+finely, not something different - so expect to press **noticeably more often**
+in a fine viewing than in a coarse one.
 """
 
 COARSE_INSTRUCTIONS = f"""
@@ -186,10 +185,9 @@ COARSE_INSTRUCTIONS = f"""
 Mark only the **large** shifts - the points where you would start a new
 sentence if you were describing the video to someone else.
 
-*For example, a video in a kitchen might divide into:*
+*For example, making a bed might divide into:*
 
-> `Removing all the old bedding` → `Putting on the fresh sheets and blankets` → `Placing the pillows back on top`
-
+> {COARSE_EXAMPLE}
 """
 
 FINE_INSTRUCTIONS = f"""
@@ -198,10 +196,11 @@ FINE_INSTRUCTIONS = f"""
 Mark the **smallest** units of activity that still feel like a complete,
 meaningful thing the person did.
 
-*For example, the single coarse event `washing up` divides into:*
+*For example, the single coarse event `{FINE_EXAMPLE_PARENT}` divides into:*
 
-> `Pulling off the first pillowcase` → `Pulling off the next pillowcase.` → `Tugging the corner of the fitted sheet` → and so on...
+> {FINE_EXAMPLE}
 
+Expect to press **noticeably more often** than in the coarse viewing.
 """
 
 INSTRUCTIONS = {"coarse": COARSE_INSTRUCTIONS, "fine": FINE_INSTRUCTIONS}
@@ -332,24 +331,6 @@ COMPREHENSION_QUESTIONS = [
             "Marks are draggable for exactly this reason: pressing a key takes "
             "a moment, so your mark lands slightly late. Drag it back into "
             "place. BACKSPACE is for removing a mark you did not mean at all."
-        ),
-    },
-    {
-        "id": "q_forward",
-        "prompt": "How do you skip forward past a part of the video?",
-        "options": [
-            "Press the RIGHT ARROW",
-            "Drag the bar under the video to the right",
-            "Press the UP ARROW",
-            "You cannot - you can only rewind, and you should watch all of it",
-        ],
-        "answer": ("You cannot - you can only rewind, and you should watch all "
-                   "of it"),
-        "explain": (
-            "There is no way to skip forward, on purpose. LEFT ARROW rewinds "
-            f"{REWIND_STEP_SEC} seconds if you want to re-watch something - "
-            "and you can press ENTER while rewound to mark a boundary you "
-            "missed the first time."
         ),
     },
 ]
