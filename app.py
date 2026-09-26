@@ -69,6 +69,8 @@ def play(stimulus: storage.Stimulus, token: str, title: str, subtitle: str):
         token=token,
         video_url=stimulus.url,
         muted=config.MUTE_VIDEO,
+        rewind_sec=config.REWIND_STEP_SEC,
+        drag_limit_sec=config.MARK_DRAG_LIMIT_SEC,
         title=title,
         subtitle=subtitle,
         key=f"player_{token}",
@@ -178,12 +180,14 @@ def screen_welcome() -> None:
 
 def screen_overview() -> None:
     st.markdown(config.TASK_OVERVIEW)
-    with st.expander("What counts as an event boundary?"):
-        st.markdown(
-            "There is no right answer - we want *your* intuition. A boundary "
-            "is simply the moment where it feels like one thing the person was "
-            "doing has finished and something else has started."
-        )
+    st.divider()
+    st.markdown(config.EVENT_DEFINITION)
+    st.divider()
+    st.markdown(config.GRANULARITY_OVERVIEW)
+    st.info(
+        "There is no right answer - we want *your* reading of the video. The "
+        "cues above are what people usually notice, not a checklist to apply."
+    )
     if st.button("Continue to comprehension check", type="primary"):
         goto("comprehension")
 
@@ -195,11 +199,13 @@ def screen_comprehension() -> None:
         "clear - you can retake it as many times as you need."
     )
 
+    pid = ss()["store"].participant_id
     with st.form("comprehension"):
         answers = {}
         for q in config.COMPREHENSION_QUESTIONS:
             answers[q["id"]] = st.radio(
-                q["prompt"], q["options"], index=None, key=f"c_{q['id']}"
+                q["prompt"], storage.comprehension_options(pid, q),
+                index=None, key=f"c_{q['id']}"
             )
         submitted = st.form_submit_button("Submit answers", type="primary")
 
@@ -251,8 +257,9 @@ def screen_practice_instructions() -> None:
     st.markdown(config.INSTRUCTIONS[granularity])
     st.info(
         f"**{config.RESPONSE_KEY_NAME}** marks a boundary, **SPACE** pauses, "
-        "and the **arrow keys** jump back and forward. **BACKSPACE** removes "
-        "the mark you just made."
+        f"**LEFT ARROW** rewinds {config.REWIND_STEP_SEC}s, and **BACKSPACE** "
+        "removes the mark you just made. Drag a mark on the bar to fix its "
+        "timing."
     )
     if st.button("I'm ready", type="primary"):
         goto("practice_viewing")
@@ -269,7 +276,7 @@ def screen_practice_viewing() -> None:
         stim, token,
         title="Click here to start the practice clip",
         subtitle=f"{config.RESPONSE_KEY_NAME} marks a {granularity} boundary. "
-                 "SPACE pauses, arrow keys seek.",
+                 "SPACE pauses, LEFT ARROW rewinds. Drag a mark to adjust it.",
     )
 
     if is_new_result(result):
@@ -392,8 +399,8 @@ def screen_block_intro() -> None:
     st.markdown(config.INSTRUCTIONS[step["granularity"]])
     st.info(
         f"About {stimulus_by_id(step['video_id']).duration_sec / 60:.0f} minutes, "
-        "silent. You can pause and rewind while you watch, but please watch "
-        "all of it rather than skipping ahead."
+        "silent. You can pause and rewind while you watch; there is no way to "
+        "skip forward."
     )
 
     if st.button("I'm ready - start this viewing", type="primary"):
@@ -415,7 +422,8 @@ def screen_viewing() -> None:
         stim, token,
         title="Click here to start the video",
         subtitle=f"{config.RESPONSE_KEY_NAME} marks a {step['granularity']} "
-                 "boundary. SPACE pauses, arrow keys seek.",
+                 "boundary. SPACE pauses, LEFT ARROW rewinds. Drag a mark to "
+                 "adjust it.",
     )
 
     if is_new_result(result):
@@ -492,7 +500,7 @@ def sidebar(stage: str) -> None:
     if stage in VIEWING_STAGES:
         st.sidebar.markdown("### Viewing in progress")
         st.sidebar.caption(
-            "ENTER marks a boundary, SPACE pauses, arrow keys seek. "
+            "ENTER marks a boundary, SPACE pauses, LEFT ARROW rewinds. "
             "Saving and download return when the video ends."
         )
         return

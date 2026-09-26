@@ -41,6 +41,9 @@ VIEWING_FIELDS = [
     "max_time_reached_sec", "completed_utc",
 ]
 
+#: ``boundary_sec`` is the mark where the participant finally left it: if they
+#: dragged it to correct for their reaction time, the dragged position is what
+#: is stored, and the original keypress time is not kept.
 BOUNDARY_FIELDS = [
     "participant_id", "role", "block_index", "video_id", "granularity",
     "viewing_in_block", "attempt", "press_index", "boundary_sec",
@@ -140,6 +143,21 @@ def build_schedule(participant_id: str, main: list[Stimulus]) -> list[dict]:
     return schedule
 
 
+def comprehension_options(participant_id: str, question: dict) -> list[str]:
+    """One question's options in a per-participant order.
+
+    Seeded by participant and question id, so it is stable across Streamlit
+    reruns -- the options must not reshuffle under someone part-way through
+    the form. Shuffling at all is what stops answer position from being a cue:
+    written in order, the correct answer would sit first every time.
+    """
+    key = f"{participant_id}|{question['id']}".encode()
+    seed = int(hashlib.sha256(key).hexdigest()[:16], 16)
+    options = list(question["options"])
+    random.Random(seed).shuffle(options)
+    return options
+
+
 # ----------------------------------------------------------------- store ----
 
 
@@ -228,9 +246,9 @@ class Store:
         Written together and only on completion, so the two CSVs can never
         disagree about which viewings exist.
 
-        Marks are stored in the order the participant pressed them. Because
-        seeking is allowed, that is *not* necessarily increasing time order --
-        sort by ``boundary_sec`` before analysing.
+        Marks are stored in the order the participant pressed them. Rewinding
+        and dragging both mean that is *not* necessarily increasing time order
+        -- sort by ``boundary_sec`` before analysing.
         """
         self._ensure_headers()
         presses = result.get("presses") or []

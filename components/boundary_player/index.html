@@ -83,27 +83,47 @@
   }
   #paused.on { display: flex; }
 
-  /* Scrub bar: click anywhere to seek. Marks appear as ticks. */
+  /* Progress bar and mark strip. Tall on purpose: the marks on it are drag
+     targets, and a 14px strip is too fine to grab without pixel-hunting.
+     It is not clickable -- seeking forward is not offered at all. */
   #bar {
     position: relative;
-    width: 100%; height: 14px;
-    margin-top: 6px;
+    width: 100%; height: 46px;
+    margin-top: 8px;
     background: #262730;
-    border-radius: 3px;
-    cursor: pointer;
+    border-radius: 4px;
+    touch-action: none;   /* a drag must not scroll the page instead */
   }
   #bar-fill {
     position: absolute; left: 0; top: 0; bottom: 0;
-    width: 0; background: var(--accent);
-    border-radius: 3px 0 0 3px;
+    width: 0; background: rgba(76, 139, 245, 0.30);
+    border-radius: 4px 0 0 4px;
     pointer-events: none;
   }
+  /* A wide, invisible grab zone around a thin visible line, with a knob at
+     the top so it reads as something you can take hold of. */
   .tick {
-    position: absolute; top: -3px; bottom: -3px;
-    width: 2px; margin-left: -1px;
-    background: var(--mark);
-    pointer-events: none;
+    position: absolute; top: 0; bottom: 0;
+    width: 24px; margin-left: -12px;
+    cursor: grab;
+    touch-action: none;
   }
+  .tick::before {
+    content: "";
+    position: absolute; top: 0; bottom: 0; left: 50%;
+    width: 3px; margin-left: -1.5px;
+    background: var(--mark);
+  }
+  .tick::after {
+    content: "";
+    position: absolute; top: 5px; left: 50%;
+    width: 14px; height: 14px; margin-left: -7px;
+    background: var(--mark); border-radius: 50%;
+    border: 2px solid var(--bg);
+  }
+  .tick:hover::before, .tick.dragging::before { background: #ffd166; }
+  .tick:hover::after,  .tick.dragging::after  { background: #ffd166; }
+  .tick.dragging { cursor: grabbing; }
   #hint {
     padding: 8px 2px 0;
     color: var(--muted);
@@ -140,9 +160,9 @@
 <div id="keys">
   <kbd>Enter</kbd> mark a boundary &nbsp;·&nbsp;
   <kbd>Space</kbd> play / pause &nbsp;·&nbsp;
-  <kbd>&larr;</kbd> <kbd>&rarr;</kbd> back / forward 5s &nbsp;·&nbsp;
-  <kbd>&uarr;</kbd> <kbd>&darr;</kbd> 30s &nbsp;·&nbsp;
-  <kbd>Backspace</kbd> undo last mark &nbsp;·&nbsp; click the bar to jump
+  <kbd>&larr;</kbd> rewind <span id="k-rewind">5</span>s &nbsp;·&nbsp;
+  <kbd>Backspace</kbd> undo last mark &nbsp;·&nbsp;
+  drag a mark to adjust its timing
 </div>
 <div id="err"></div>
 
@@ -167,8 +187,9 @@ const Streamlit = {
   },
 };
 
-const SEEK_SMALL = 5;      // seconds, left/right arrows
-const SEEK_BIG = 30;       // seconds, up/down arrows
+/* Both come from config.py via render(); these are only fallbacks. */
+let REWIND_SEC = 5;        // left arrow step
+let DRAG_LIMIT = 10;       // how far a mark may be dragged, either way
 
 const stage   = document.getElementById("stage");
 const vid     = document.getElementById("vid");
@@ -186,15 +207,19 @@ const errBox  = document.getElementById("err");
 let token = null;          // identifies this viewing; guards against restarts
 let started = false;
 let finished = false;
-let marks = [];            // {t_video, t_wall} per Enter press
+/* One per Enter press. Only t_video and t_wall are saved; t_video_raw and
+   adjusted exist so a drag can be clamped to the original keypress, and stay
+   client-side. */
+let marks = [];
 let blurEvents = 0;        // times the participant left the tab/window
 let pauseCount = 0;
-let seekCount = 0;
+let rewindCount = 0;
+let dragging = null;       // {el, index} while a mark is being dragged
 let maxReached = 0;        // furthest point actually reached
 let startedWallMs = null;
 
 /* Chrome below the video inside this frame: bar + hint + key legend. */
-const CHROME_PX = 74;
+const CHROME_PX = 112;
 /* Breathing room so the parent page never gains a scrollbar. */
 const SAFETY_PX = 12;
 
@@ -232,12 +257,62 @@ function fmt(sec) {
 function redrawTicks() {
   for (const el of bar.querySelectorAll(".tick")) el.remove();
   if (!vid.duration) return;
-  for (const m of marks) {
+  marks.forEach((m, i) => {
     const el = document.createElement("div");
     el.className = "tick";
     el.style.left = (100 * m.t_video / vid.duration) + "%";
+    el.dataset.index = String(i);
+    el.title = "Drag to adjust when this boundary happened";
+    el.addEventListener("pointerdown", startDrag);
     bar.appendChild(el);
-  }
+  });
+}
+
+/* Marks are placed by keypress, so they land a reaction time late. Dragging
+   corrects that. The movement is clamped to DRAG_LIMIT seconds either side of
+   where the key actually went down, so a mark can be nudged into place but
+   not relocated to a different part of the activity. */
+function startDrag(e) {
+  if (!started || finished) return;
+  e.preventDefault();
+  const el = e.currentTarget;
+  el.classList.add("dragging");
+  el.setPointerCapture(e.pointerId);
+  dragging = { el: el, index: Number(el.dataset.index) };
+  el.addEventListener("pointermove", onDrag);
+  el.addEventListener("pointerup", endDrag);
+  el.addEventListener("pointercancel", endDrag);
+}
+
+function onDrag(e) {
+  if (!dragging || !vid.duration) return;
+  const m = marks[dragging.index];
+  const r = bar.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  const lo = Math.max(0, m.t_video_raw - DRAG_LIMIT);
+  const hi = Math.min(vid.duration, m.t_video_raw + DRAG_LIMIT);
+  m.t_video = Number(Math.min(hi, Math.max(lo, frac * vid.duration)).toFixed(3));
+  m.adjusted = Math.abs(m.t_video - m.t_video_raw) > 0.001;
+  dragging.el.style.left = (100 * m.t_video / vid.duration) + "%";
+  const delta = m.t_video - m.t_video_raw;
+  warn.textContent = delta === 0 ? ""
+    : `Mark moved ${delta < 0 ? "back" : "forward"} ${Math.abs(delta).toFixed(1)}s.`;
+  updateHint();
+}
+
+function endDrag() {
+  if (!dragging) return;
+  const el = dragging.el;
+  el.classList.remove("dragging");
+  el.removeEventListener("pointermove", onDrag);
+  el.removeEventListener("pointerup", endDrag);
+  el.removeEventListener("pointercancel", endDrag);
+  dragging = null;
+  setTimeout(() => {
+    if (warn.textContent.startsWith("Mark moved")) warn.textContent = "";
+  }, 2000);
+  redrawTicks();   // reattach handles with fresh positions
+  stage.focus();   // keys must keep working after a drag
 }
 
 function updateHint() {
@@ -245,7 +320,8 @@ function updateHint() {
   barFill.style.width = (100 * vid.currentTime / vid.duration) + "%";
   const n = marks.length;
   hintL.textContent =
-    `${fmt(vid.currentTime)} / ${fmt(vid.duration)}  -  ${n} boundar${n === 1 ? "y" : "ies"} marked`;
+    `${fmt(vid.currentTime)} / ${fmt(vid.duration)}  -  ${n} boundar${n === 1 ? "y" : "ies"} marked` +
+    (n ? "  -  drag a mark to adjust its timing" : "");
 }
 
 function render(args) {
@@ -255,8 +331,12 @@ function render(args) {
 
   token = args.token;
   started = false; finished = false;
-  marks = []; blurEvents = 0; pauseCount = 0; seekCount = 0;
-  maxReached = 0; startedWallMs = null;
+  marks = []; blurEvents = 0; pauseCount = 0; rewindCount = 0;
+  maxReached = 0; startedWallMs = null; dragging = null;
+
+  if (args.rewind_sec) REWIND_SEC = args.rewind_sec;
+  if (args.drag_limit_sec) DRAG_LIMIT = args.drag_limit_sec;
+  document.getElementById("k-rewind").textContent = String(REWIND_SEC);
 
   vid.muted = !!args.muted;
   vid.src = args.video_url;
@@ -287,10 +367,16 @@ function start() {
   });
 }
 
+/* Deliberately independent of playback state: a mark lands wherever the video
+   is sitting, so a participant can rewind to a moment they missed, or pause on
+   it, and still record a boundary there. */
 function mark() {
   if (!started || finished) return;
+  const t = Number(vid.currentTime.toFixed(3));
   marks.push({
-    t_video: Number(vid.currentTime.toFixed(3)),
+    t_video: t,
+    t_video_raw: t,
+    adjusted: false,
     t_wall: Number(((Date.now() - startedWallMs) / 1000).toFixed(3)),
   });
   flash.classList.remove("on");
@@ -317,11 +403,12 @@ function togglePlay() {
   else vid.pause();
 }
 
-function seekBy(delta) {
+/* Rewind only. There is deliberately no forward seek: every boundary should
+   be judged from video the participant has actually watched. */
+function rewind() {
   if (!started || finished || !vid.duration) return;
-  seekCount += 1;
-  vid.currentTime = Math.min(vid.duration - 0.05,
-                             Math.max(0, vid.currentTime + delta));
+  rewindCount += 1;
+  vid.currentTime = Math.max(0, vid.currentTime - REWIND_SEC);
 }
 
 function finish() {
@@ -330,9 +417,9 @@ function finish() {
   barFill.style.width = "100%";
   pausedEl.classList.remove("on");
   hintL.textContent = "Viewing complete - saving...";
-  // Marks are sent in the order they were pressed. With seeking enabled that
-  // is not necessarily time order, so anything downstream must sort by
-  // boundary_sec rather than assume it.
+  // Marks are sent in the order they were pressed. Rewinding and dragging
+  // both break time order, so anything downstream must sort by boundary_sec
+  // rather than assume it.
   Streamlit.setValue({
     token: token,
     status: "completed",
@@ -342,7 +429,7 @@ function finish() {
     elapsed_sec: Number(((Date.now() - startedWallMs) / 1000).toFixed(3)),
     blur_events: blurEvents,
     pause_count: pauseCount,
-    seek_count: seekCount,
+    seek_count: rewindCount,
     max_time_reached_sec: Number(maxReached.toFixed(3)),
   });
 }
@@ -370,10 +457,12 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       if (!e.repeat) togglePlay();
       break;
-    case "ArrowLeft":  e.preventDefault(); seekBy(-SEEK_SMALL); break;
-    case "ArrowRight": e.preventDefault(); seekBy(+SEEK_SMALL); break;
-    case "ArrowUp":    e.preventDefault(); seekBy(+SEEK_BIG);   break;
-    case "ArrowDown":  e.preventDefault(); seekBy(-SEEK_BIG);   break;
+    case "ArrowLeft":  e.preventDefault(); rewind(); break;
+    // The other arrows would be forward seeks, so they are swallowed rather
+    // than left to scroll the page.
+    case "ArrowRight":
+    case "ArrowUp":
+    case "ArrowDown":  e.preventDefault(); break;
     case "Backspace":
       e.preventDefault();
       if (!e.repeat) undoMark();
@@ -381,16 +470,6 @@ document.addEventListener("keydown", (e) => {
     default:
       if (e.code === "Space") { e.preventDefault(); if (!e.repeat) togglePlay(); }
   }
-});
-
-// Click anywhere on the scrub bar to jump there.
-bar.addEventListener("click", (e) => {
-  if (!started || finished || !vid.duration) return;
-  const r = bar.getBoundingClientRect();
-  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-  seekCount += 1;
-  vid.currentTime = frac * vid.duration;
-  stage.focus();
 });
 
 vid.addEventListener("play",  () => pausedEl.classList.remove("on"));
