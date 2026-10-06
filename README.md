@@ -1,7 +1,7 @@
 # Event Segmentation Study
 
 You will watch egocentric videos of everyday activities and mark, as you
-watch, event boundaries.
+watch, coarse (large) event boundaries.
 
 ## Install and run with uv
 
@@ -43,16 +43,23 @@ you work - closing it stops the app. Press Ctrl+C there when you are done.
 
 ## Before you start
 
-Check that `static/videos/` contains `practice.mp4`, `V01.mp4`, `V02.mp4` and
-`V03.mp4`. If the videos were sent to you separately, put them there. The app
-will not run without them.
+Check that `static/videos/` contains `practice.mp4`, `V01.mp4`, `V02.mp4`,
+`V03.mp4`, the two demo videos `V04.mp4` and `V05.mp4`, and
+`Annotations_in_seconds.txt`. If the videos were sent to you separately, put
+them there. The app will not run without them.
+
+The app follows your computer's light or dark mode.
 ## Doing the task
 
 Use the **Participant ID** given to you to log in.
 
-You will get instructions, a short comprehension check, two practice runs, and
-then the videos themselves. **Press ENTER every time you feel one event has
+You will get instructions, two demo videos, a practice run, and then the
+videos themselves. **Press ENTER every time you feel one large event has
 ended and another has begun.**
+
+In the **demos** you do not press anything: the ENTER key lights up on screen
+at each coarse boundary so you can see where a press belongs. Watch each demo
+as many times as you like, then go on to the practice.
 
 You control playback:
 
@@ -60,25 +67,23 @@ You control playback:
 |---|---|
 | **Enter** | mark a boundary |
 | **Space** | play / pause |
-| **←** | rewind 5 seconds |
 | **Backspace** | remove the mark you just made |
 
-There is no way to skip forward - you will see all of every video.
+**There is no rewinding or skipping** - each video plays through once, so
+watch closely. You can pause at any time and press **Enter** while paused.
+**Drag a handle left or right** (up to 10 seconds) to put it where the change
+actually happened if you think there was some latency when marking.
 
-If you think you missed a boundary, rewind and watch that stretch again. You
-can press **Enter** while rewound or while paused.**Drag a handle left or right** (up to 10 seconds) to put it where the change actually happened if you think theree waas some latency when marking the label.
-
-Each video is watched **twice in a row** - once marking large event boundaries
-and once marking small ones. The instructions before each viewing tell you
-which, so please read them: they change between the two viewings.
+Each video is watched **once**, marking only the large (coarse) event
+boundaries. A counter on screen shows how many videos are left.
 
 The videos are silent, so there is no
 need to adjust your volume. Don't agonise over exact placement - we want your
 intuition, not a perfect answer.
 
 There are **three videos** of quite different lengths - roughly 6, 8 and 18
-minutes - so the whole thing takes about **1 hour 15 minutes**. It is not meant
-to be done in one sitting.
+minutes - so the whole thing takes about **1 hour**. It is not meant to be done
+in one sitting.
 
 ## Pausing and resuming
 
@@ -92,8 +97,7 @@ to save your progress so far.
 ## When you are done
 
 Click **Download all my data (.zip)** and send me the file. It contains your
-marks for all eight viewings — the two practice runs and both passes over
-each of the three videos.
+marks for the practice run and each of the three videos.
 
 In case of any questions, you can contact me.
 

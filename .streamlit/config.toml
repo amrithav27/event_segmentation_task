@@ -6,3 +6,6 @@ enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
+
+# No [theme] base is set on purpose: Streamlit then follows the operating
+# system's light/dark setting, and the video player follows Streamlit.

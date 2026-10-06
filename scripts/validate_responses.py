@@ -2,7 +2,7 @@
 """Check collected data in ``responses/`` and report per-participant status.
 
 Run this before analysis. It verifies that the two CSVs agree, that every
-completed viewing looks sane, and that the realised randomisation is balanced.
+completed viewing looks sane, and that each participant watched the demos.
 
 Usage::
 
@@ -101,10 +101,9 @@ def check_participant(pdir: Path) -> tuple[list[str], dict]:
     for b in boundaries:
         by_viewing[(b["video_id"], b["granularity"])].append(float(b["boundary_sec"]))
     for key, times in by_viewing.items():
-        # Marks are stored in press order, and rewinding legitimately produces
+        # Marks are stored in press order, and dragging legitimately produces
         # out-of-order timestamps, so that is not an error. Near-duplicates
-        # are: they usually mean the same boundary was marked twice after a
-        # rewind.
+        # are: they usually mean the same boundary was marked twice.
         if any(t < 0 for t in times):
             problems.append(f"{pdir.name}: {key} has a negative timestamp")
         ordered = sorted(times)
@@ -112,38 +111,26 @@ def check_participant(pdir: Path) -> tuple[list[str], dict]:
         if dupes:
             problems.append(
                 f"{pdir.name}: {key} has {dupes} pair(s) of marks under 0.5 s "
-                "apart - likely double-marked after a rewind"
+                "apart - likely double-marked"
             )
 
-    # Coarse should not out-number fine on the same video.
-    per_video: dict[str, dict[str, int]] = defaultdict(dict)
-    for v in viewings:
-        per_video[v["video_id"]][v["granularity"]] = int(v["n_presses"])
-    inverted = [vid for vid, g in per_video.items()
-                if "coarse" in g and "fine" in g and g["coarse"] > g["fine"]]
-    if inverted:
-        problems.append(
-            f"{pdir.name}: more COARSE than FINE boundaries on {inverted} "
-            "(possible instruction misunderstanding)"
-        )
+    demo_views = [d for d in session.get("demos", [])
+                  if d.get("status") == "completed"]
+    if not session.get("demos_completed") and done:
+        problems.append(f"{pdir.name}: annotated without finishing the demos")
 
-    first_granularity = {
-        s["video_id"]: s["granularity"]
-        for s in session["schedule"] if s["viewing_in_block"] == 1
-    }
     summary = {
         "participant_id": session["participant_id"],
         "done": done,
         "total": total,
         "complete": done >= total,
-        "comprehension_attempts": (session.get("comprehension") or {}).get("attempts"),
+        "demo_views": len(demo_views),
         "practice_attempts": len(session.get("practice", [])),
         "boundaries": len(boundaries),
         "pauses": sum(int(v.get("pause_count") or 0) for v in viewings),
         "seeks": sum(int(v.get("seek_count") or 0) for v in viewings),
         "practice_rows": len(practice),
         "practice_marks": sum(int(v.get("n_presses") or 0) for v in practice),
-        "first_granularity": first_granularity,
     }
     return problems, summary
 
@@ -168,24 +155,14 @@ def main() -> int:
             summaries.append(summary)
 
     print(f"{'participant':<16}{'progress':>10}{'marks':>8}{'pauses':>8}"
-          f"{'seeks':>7}{'compr.':>8}{'prac.runs':>11}{'prac.marks':>12}")
+          f"{'seeks':>7}{'demos':>8}{'prac.runs':>11}{'prac.marks':>12}")
     print("-" * 82)
     for s in summaries:
         flag = "" if s["complete"] else "  <- incomplete"
         print(f"{s['participant_id']:<16}{s['done']}/{s['total']:>8}"
               f"{s['boundaries']:>8}{s['pauses']:>8}{s['seeks']:>7}"
-              f"{str(s['comprehension_attempts']):>8}"
+              f"{s['demo_views']:>8}"
               f"{s['practice_rows']:>11}{s['practice_marks']:>12}{flag}")
-
-    # Realised counterbalancing: which granularity each video was first seen at.
-    balance: dict[str, Counter] = defaultdict(Counter)
-    for s in summaries:
-        for video_id, granularity in s["first_granularity"].items():
-            balance[video_id][granularity] += 1
-    print("\nFirst-viewing granularity per video (want roughly 50/50):")
-    for video_id in sorted(balance):
-        c = balance[video_id]
-        print(f"  {video_id}: coarse={c['coarse']}  fine={c['fine']}")
 
     print(f"\n{len(all_problems)} issue(s) found.")
     for p in all_problems:

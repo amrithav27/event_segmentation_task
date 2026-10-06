@@ -19,16 +19,16 @@ VIDEO_URL_PREFIX = "app/static/videos"  # served by Streamlit's static file serv
 #: Number of main videos each participant annotates.
 N_MAIN_VIDEOS = 3
 
-#: Each video is viewed once per granularity, back to back.
-GRANULARITIES = ("coarse", "fine")
+#: Each video is viewed once, marking coarse boundaries only.
+GRANULARITIES = ("coarse",)
 
 #: Key participants press to mark a boundary, as shown in the instructions.
 #: SPACE is the transport play/pause toggle instead, so marking uses ENTER.
 RESPONSE_KEY_NAME = "ENTER"
 
-#: Participants may rewind but never skip forward, so every boundary is judged
-#: from video they have actually watched. One step size, to keep the transport
-#: simple enough to use without looking away from the video.
+#: Annotation offers no seeking at all - no rewind, no skip - so every boundary
+#: is judged on one first viewing. This step is used only by the demos, where
+#: the arrow keys rewind and skip ahead.
 REWIND_STEP_SEC = 5
 
 #: How far a mark may be dragged along the bar, in seconds either way. Marks
@@ -42,19 +42,30 @@ MARK_DRAG_LIMIT_SEC = 10.0
 #: browsers from blocking playback.
 MUTE_VIDEO = True
 
+# ----------------------------------------------------------------- demos ----
+
+#: Worked examples shown before the practice. Each plays with the reference
+#: coarse boundaries from ``static/videos/Annotations_in_seconds.txt``
+#: animated as ENTER presses, so participants see when a press belongs.
+#: ``annotation_index`` is the "Video N" entry in that file.
+DEMO_ANNOTATIONS_FILE = ROOT / "static" / "videos" / "Annotations_in_seconds.txt"
+DEMO_VIDEOS = [
+    {"video_id": "V04", "filename": "V04.mp4", "annotation_index": 1},
+    {"video_id": "V05", "filename": "V05.mp4", "annotation_index": 2},
+]
+
 # ------------------------------------------------------- practice limits ----
 
 #: Accepted mark counts on the practice clip, as marks per minute.
 #:
 #: The practice clip is the one from the PsychoPy study in
 #: ``../pooja_experiment``, so these reproduce the thresholds that study's code
-#: hard-codes for this exact clip: coarse 1-4 and fine 5-10 (see
+#: hard-codes for this exact clip: coarse 1-4 (see
 #: ``segmentation_exp_lab_lastrun.py``, the ``lower``/``upper`` pairs). Stated
 #: as rates rather than counts so they still mean something if the clip is
 #: swapped.
 PRACTICE_RATE_BOUNDS = {
     "coarse": (0.5, 2.0),   # 1-4 marks on the 106 s practice clip
-    "fine": (3.0, 5.5),     # 5-10 marks on the 106 s practice clip
 }
 
 #: How many times a participant may fail the practice before the app lets them
@@ -64,41 +75,36 @@ PRACTICE_MAX_ATTEMPTS = 3
 # ---------------------------------------------------------------- text ------
 
 WELCOME = """
-### Welcome, and thank you for your particiaption
+### Welcome, and thank you for your participation
 
-You will watch a series of egocentric videos of
-everyday activities and mark where you think one event ends and the next
-begins. You control playback, so you can pause and rewind as you go.
+You will watch a series of egocentric videos of everyday activities and mark
+where you think one large event ends and the next begins. You control
+playback, so you can pause whenever you need to.
 
-The whole session takes about **1 hour 15 minutes**. You are not expected to do
-it in one sitting: you can stop between videos and resume later with the same
+The whole session takes about **1 hour**. You are not expected to do it in one
+sitting: you can stop between videos and resume later with the same
 Participant ID - your progress is saved automatically.
 """
 
 TASK_OVERVIEW = f"""
 ### What you will do
 
-You will see **{N_MAIN_VIDEOS} videos** of quite different lengths, and watch
-**each one twice, back to back** - once marking coarse (large) boundaries and
-once marking fine (small) ones. The order of the videos, and of the two
-viewings, is different for every participant.
+You will see **{N_MAIN_VIDEOS} videos** of quite different lengths and watch
+**each one once**, marking **coarse** (large) event boundaries. The order of
+the videos is different for every participant.
 
-While a video plays, press **{RESPONSE_KEY_NAME}** every time you believe a
-meaningful unit of activity has ended and another has begun.
+While a video plays, press **{RESPONSE_KEY_NAME}** every time you believe one
+large unit of activity has ended and another has begun.
 
 | key | does |
 |---|---|
 | **{RESPONSE_KEY_NAME}** | mark a boundary |
 | **SPACE** | play / pause |
-| **LEFT ARROW** | rewind {REWIND_STEP_SEC} seconds |
 | **BACKSPACE** | remove the mark you just made |
 
-There is no way to skip forward - you will see all of every video.
-
-**Rewinding.** If you think you missed a boundary, rewind and watch that
-stretch again. You can press **{RESPONSE_KEY_NAME}** while rewound or while
-paused: a mark is recorded wherever the video is sitting, not only during
-normal playback.
+**No rewinding or skipping.** Each video plays through once, from start to
+end - you cannot go back or jump ahead, so watch closely. You can pause at any
+time, and you can press **{RESPONSE_KEY_NAME}** while paused.
 
 **Fixing the timing.** Marks appear as orange handles on the wide bar under
 the video. Because it takes a moment to react, a mark usually lands slightly
@@ -110,12 +116,11 @@ The videos are **silent**, so there is no need to adjust your volume. Don't
 agonise over exact placement: we want your intuition, not a perfect answer.
 """
 
-#: Shown once, before the comprehension check. The three cues -- goal,
-#: location, entities -- are the situational dimensions whose change predicts
-#: boundary judgements in event segmentation theory (Zacks & Swallow 2007;
-#: Zacks, Speer, Swallow, Braver & Reynolds 2007). Phrased as "your prediction
-#: stops working" rather than in terms of prediction error, since the
-#: participant has to apply it without the theory.
+#: The three cues -- goal, location, entities -- are the situational
+#: dimensions whose change predicts boundary judgements in event segmentation
+#: theory (Zacks & Swallow 2007; Zacks, Speer, Swallow, Braver & Reynolds
+#: 2007). Phrased as "your prediction stops working" rather than in terms of
+#: prediction error, since the participant has to apply it without the theory.
 EVENT_DEFINITION = """
 ### What counts as an event?
 
@@ -142,45 +147,33 @@ so the view swings around constantly. Mark changes in *what is being done*, not
 in what the camera happens to point at.
 """
 
-#: One worked example, shown twice: on the overview screen with both grains
-#: side by side, so the nesting is visible before the comprehension check asks
-#: about it, and again in the per-viewing instructions below. Defined here once
-#: so the two copies cannot drift apart.
+#: The coarse example, shown in the overview and again before every viewing.
 COARSE_EXAMPLE = (
     "`Removing all the old bedding` → `Putting on the fresh sheets and "
     "blankets` → `Placing the pillows back on top`"
 )
-FINE_EXAMPLE = (
+#: Shown only as a counter-example, so participants know what *not* to mark.
+TOO_SMALL_EXAMPLE = (
     "`Pulling off the first pillowcase` → `Pulling off the next pillowcase` → "
-    "`Tugging the corner of the fitted sheet` → and so on..."
+    "`Tugging the corner of the fitted sheet`"
 )
-#: The coarse event the fine example sits inside.
-FINE_EXAMPLE_PARENT = "Removing all the old bedding"
 
 GRANULARITY_OVERVIEW = f"""
-### Coarse and fine boundaries
+### Mark only the large (coarse) boundaries
 
-You watch each video twice, marking at two different grains. The instructions
-before each viewing say which one you are doing, so read them - they change.
-
-**Coarse** - the **large** shifts, where you would start a new sentence if you
-were describing the video. Making a bed might divide into:
+Mark the **large** shifts - the points where you would start a new sentence if
+you were describing the video to someone else. Making a bed might divide into:
 
 > {COARSE_EXAMPLE}
 
-**Fine** - the **smallest** units that still feel like a complete, meaningful
-thing the person did. The single coarse event `{FINE_EXAMPLE_PARENT}` divides
-into:
-
-> {FINE_EXAMPLE}
-
-Fine boundaries sit **inside** the coarse ones - the same activity divided more
-finely, not something different - so expect to press **noticeably more often**
-in a fine viewing than in a coarse one.
+**What is too small.** The same activity could be chopped much more finely -
+for example, `Removing all the old bedding` could be split into
+{TOO_SMALL_EXAMPLE}. Those small steps are **not** what we are asking for.
+They all sit *inside* one coarse event, so do **not** press for them.
 """
 
 COARSE_INSTRUCTIONS = f"""
-### This viewing: COARSE boundaries
+### Mark COARSE boundaries
 
 Mark only the **large** shifts - the points where you would start a new
 sentence if you were describing the video to someone else.
@@ -188,27 +181,30 @@ sentence if you were describing the video to someone else.
 *For example, making a bed might divide into:*
 
 > {COARSE_EXAMPLE}
+
+Ignore the small steps inside each of these - press only when one large part
+of the activity ends and the next begins.
 """
 
-FINE_INSTRUCTIONS = f"""
-### This viewing: FINE boundaries
+INSTRUCTIONS = {"coarse": COARSE_INSTRUCTIONS}
 
-Mark the **smallest** units of activity that still feel like a complete,
-meaningful thing the person did.
+DEMO_INTRO = f"""
+### Demos: what a good annotation looks like
 
-*For example, the single coarse event `{FINE_EXAMPLE_PARENT}` divides into:*
+Before you practise, watch **two demo videos** that have already been
+annotated. Each time the video reaches a coarse boundary, you will see the
+**{RESPONSE_KEY_NAME}** key light up and a mark drop onto the bar - that is the
+moment you would press **{RESPONSE_KEY_NAME}** yourself.
 
-> {FINE_EXAMPLE}
-
-Expect to press **noticeably more often** than in the coarse viewing.
+You do not press anything during a demo. You can pause, rewind, skip ahead and
+watch each demo **as many times as you like**. Once you have watched both to
+the end, you can go on to the practice.
 """
-
-INSTRUCTIONS = {"coarse": COARSE_INSTRUCTIONS, "fine": FINE_INSTRUCTIONS}
 
 PRACTICE_INTRO = """
 ### Practice
 
-First, a short practice run so you get a feel for the task. The practice clip
+Next, a short practice run so you get a feel for the task. The practice clip
 is under two minutes and is **not** part of the real data.
 
 If you mark far more or far fewer boundaries than expected, you will be asked
@@ -220,8 +216,9 @@ PRACTICE_TOO_FEW = (
     "practice and try to identify more boundaries."
 )
 PRACTICE_TOO_MANY = (
-    f"You pressed **{RESPONSE_KEY_NAME}** too many times. Please redo the "
-    "practice and try to identify fewer boundaries."
+    f"You pressed **{RESPONSE_KEY_NAME}** too many times. Remember to mark "
+    "only the large (coarse) shifts. Please redo the practice and try to "
+    "identify fewer boundaries."
 )
 PRACTICE_PASSED = "Good job. That is the right kind of response rate."
 
@@ -240,97 +237,3 @@ FINISH_TEXT = """
 You have completed every video. Please download your data below and send the
 file back to the experimenter.
 """
-
-# -------------------------------------------------- comprehension check -----
-
-#: All questions must be answered correctly before the practice begins. These
-#: check that the participant has actually read the instructions, which the
-#: PsychoPy version relied on an in-room experimenter to confirm.
-#:
-#: Options are shuffled per participant at render time
-#: (``storage.comprehension_options``), so the order written here does not
-#: reach the screen and position cannot signal the answer.
-COMPREHENSION_QUESTIONS = [
-    {
-        "id": "q_boundary",
-        "prompt": "What is an event boundary?",
-        "options": [
-            "Any moment the camera swings to look somewhere else",
-            "The moment the activity changes, so what you expected to happen "
-            "next no longer fits",
-            "A cut or fade between two shots",
-            "Every few seconds, at a steady rate",
-        ],
-        "answer": ("The moment the activity changes, so what you expected to "
-                   "happen next no longer fits"),
-        "explain": (
-            "A boundary is where your sense of what is going on stops working "
-            "and you need a fresh one. The camera is on the person's head, so "
-            "it moves constantly - that on its own is not a boundary."
-        ),
-    },
-    {
-        "id": "q_coarse",
-        "prompt": "In the COARSE viewing, what should you mark?",
-        "options": [
-            "Every time the person picks up a different object",
-            "Only the very start and very end of the video",
-            "The largest shifts - where one whole part of the activity ends "
-            "and another begins",
-            "Every time the camera wearer moves their head",
-        ],
-        "answer": ("The largest shifts - where one whole part of the activity "
-                   "ends and another begins"),
-        "explain": (
-            "Coarse = the large shifts, usually a change of goal or location. "
-            "The smaller steps inside them belong to the fine viewing."
-        ),
-    },
-    {
-        "id": "q_fine",
-        "prompt": (
-            "Compared with the coarse viewing, how many boundaries do you "
-            "expect to mark in the FINE viewing?"
-        ),
-        "options": ["Exactly the same number", "More", "Fewer", "None"],
-        "answer": "More",
-        "explain": (
-            "Fine segmentation divides the same activity into smaller units, "
-            "so it normally yields more boundaries than coarse segmentation."
-        ),
-    },
-    {
-        "id": "q_key",
-        "prompt": "What do you do when you notice an event boundary?",
-        "options": [
-            "Click the mouse on the video",
-            "Press the SPACEBAR",
-            "Press ENTER",
-            "Wait until the video ends, then type the times",
-        ],
-        "answer": "Press ENTER",
-        "explain": (
-            "ENTER marks a boundary. SPACE is play/pause, so it will not "
-            "record anything."
-        ),
-    },
-    {
-        "id": "q_drag",
-        "prompt": (
-            "You notice a boundary, but by the time you press the key the "
-            "video has moved slightly past it. What can you do?"
-        ),
-        "options": [
-            "Drag the mark on the bar left until it lines up with the change",
-            "Nothing - the mark is fixed where you pressed",
-            "Delete the mark and start the video again from the beginning",
-            "Press ENTER a second time to correct it",
-        ],
-        "answer": "Drag the mark on the bar left until it lines up with the change",
-        "explain": (
-            "Marks are draggable for exactly this reason: pressing a key takes "
-            "a moment, so your mark lands slightly late. Drag it back into "
-            "place. BACKSPACE is for removing a mark you did not mean at all."
-        ),
-    },
-]

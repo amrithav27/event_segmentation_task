@@ -1,9 +1,9 @@
 """Event-boundary segmentation experiment (Streamlit).
 
-Participants watch Ego4D Moment Queries clips and press ENTER at event
-boundaries, with SPACE and the arrow keys controlling playback. Each video is
-annotated twice, back to back, once coarse and once fine, in a per-participant
-random order.
+Participants watch Ego4D Moment Queries clips and press ENTER at coarse event
+boundaries, with SPACE to pause and no rewinding or skipping. Each video is
+annotated once, in a per-participant random order. Two demo videos with
+reference boundaries animated as keypresses come before the practice.
 
 Run with::
 
@@ -27,10 +27,10 @@ _player = components.declare_component(
     "boundary_player", path=str(config.ROOT / "components" / "boundary_player")
 )
 
-PRACTICE_ORDER = ("coarse", "fine")
+PRACTICE_ORDER = ("coarse",)
 
 #: Screens where the video should take the whole window.
-VIEWING_STAGES = ("viewing", "practice_viewing")
+VIEWING_STAGES = ("viewing", "practice_viewing", "demo_viewing")
 
 #: Wide and padding-free while a video plays, so it gets the full screen;
 #: narrow elsewhere, because full-width prose is hard to read.
@@ -63,7 +63,8 @@ def practice_bounds(duration_sec: float, granularity: str) -> tuple[int, int]:
     return max(1, math.floor(low_rate * minutes)), math.ceil(high_rate * minutes)
 
 
-def play(stimulus: storage.Stimulus, token: str, title: str, subtitle: str):
+def play(stimulus, token: str, title: str, subtitle: str, badge: str = "",
+         mode: str = "annotate", demo_marks=()):
     """Render the player and return its result dict once the video has ended."""
     return _player(
         token=token,
@@ -73,8 +74,32 @@ def play(stimulus: storage.Stimulus, token: str, title: str, subtitle: str):
         drag_limit_sec=config.MARK_DRAG_LIMIT_SEC,
         title=title,
         subtitle=subtitle,
+        badge=badge,
+        mode=mode,
+        demo_marks=list(demo_marks),
         key=f"player_{token}",
         default=None,
+    )
+
+
+def remaining_label(done: int, total: int) -> str:
+    """Counter text for the main videos, e.g. "Video 2 of 3 · 1 left after this"."""
+    left_after = total - done - 1
+    tail = ("last one" if left_after == 0
+            else f"{left_after} more after this")
+    return f"Video {done + 1} of {total} · {tail}"
+
+
+def counter_header(title: str, counter: str) -> None:
+    """A heading with the remaining-videos counter pinned to its right."""
+    st.markdown(
+        "<div style='display:flex;align-items:baseline;justify-content:"
+        "space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.3rem'>"
+        f"<h4 style='margin:0;padding:0'>{title}</h4>"
+        "<span style='padding:0.15rem 0.8rem;border-radius:999px;"
+        "background:var(--primary-color, #ff4b4b);color:#fff;font-weight:600;"
+        f"font-size:0.95rem;white-space:nowrap'>{counter}</span></div>",
+        unsafe_allow_html=True,
     )
 
 
@@ -159,7 +184,7 @@ def screen_login(main, practice_stim) -> None:
 
     done = store.n_completed()
     total = len(session["schedule"])
-    if not session.get("comprehension"):
+    if not session.get("demos_completed"):
         goto("welcome")
     elif not session.get("practice_completed"):
         goto("practice_intro")
@@ -186,57 +211,85 @@ def screen_overview() -> None:
     st.markdown(config.GRANULARITY_OVERVIEW)
     st.info(
         "There is no right answer - we want *your* reading of the video. The "
-        "cues above are what people usually notice, not a checklist to apply."
+        "cues above are what people usually notice, not a checklist to apply. "
+        "Throughout this study you mark **only coarse (large) boundaries**."
     )
-    if st.button("Continue to comprehension check", type="primary"):
-        goto("comprehension")
+    if st.button("Continue to the demos", type="primary"):
+        goto("demo_intro")
 
 
-def screen_comprehension() -> None:
-    st.markdown("### Comprehension check")
-    st.markdown(
-        "Please answer all questions. This just confirms the instructions were "
-        "clear - you can retake it as many times as you need."
+# --------------------------------------------------------------- demos ------
+
+def demos_watched() -> set[str]:
+    """Demo videos this participant has watched to the end at least once."""
+    return {d["video_id"] for d in ss()["session"].get("demos", [])
+            if d.get("status") == "completed"}
+
+
+def screen_demo_intro() -> None:
+    st.markdown(config.DEMO_INTRO)
+    demos = ss()["demos"]
+    watched = demos_watched()
+    views = ss().setdefault("demo_views", {})
+
+    for n, demo in enumerate(demos, start=1):
+        seen = demo.video_id in watched
+        cols = st.columns([3, 2])
+        cols[0].markdown(
+            f"**Demo {n}** - {len(demo.boundaries)} coarse boundaries"
+            + ("  \n:green[Watched]" if seen else "  \n:orange[Not watched yet]")
+        )
+        label = "Watch again" if seen else "Watch demo"
+        if cols[1].button(label, key=f"demo_btn_{demo.video_id}",
+                          type="secondary" if seen else "primary",
+                          use_container_width=True):
+            views[demo.video_id] = views.get(demo.video_id, 0) + 1
+            ss()["demo_current"] = demo.video_id
+            goto("demo_viewing")
+
+    st.divider()
+    all_seen = all(d.video_id in watched for d in demos)
+    if not all_seen:
+        st.caption("Watch both demos to the end to continue. You can come "
+                   "back to this list and rewatch them as often as you like.")
+    if st.button("Continue to the practice", type="primary",
+                 disabled=not all_seen):
+        session = ss()["session"]
+        session["demos_completed"] = True
+        ss()["store"].save_session(session)
+        goto("practice_intro")
+
+
+def screen_demo_viewing() -> None:
+    video_id = ss()["demo_current"]
+    demo = next(d for d in ss()["demos"] if d.video_id == video_id)
+    n = [d.video_id for d in ss()["demos"]].index(video_id) + 1
+    view = ss()["demo_views"][video_id]
+    token = f"{ss()['store'].participant_id}|demo|{video_id}|{view}"
+
+    st.markdown(f"#### Demo {n} - coarse boundaries")
+    result = play(
+        demo, token,
+        title=f"Click here to play demo {n}",
+        subtitle="Watch where ENTER gets pressed - those are the coarse "
+                 "boundaries. You do not press anything here. SPACE pauses, "
+                 "the arrow keys rewind and skip ahead.",
+        mode="demo", demo_marks=demo.boundaries,
     )
 
-    pid = ss()["store"].participant_id
-    with st.form("comprehension"):
-        answers = {}
-        for q in config.COMPREHENSION_QUESTIONS:
-            answers[q["id"]] = st.radio(
-                q["prompt"], storage.comprehension_options(pid, q),
-                index=None, key=f"c_{q['id']}"
-            )
-        submitted = st.form_submit_button("Submit answers", type="primary")
-
-    if not submitted:
+    if not result or result.get("token") != token:
         return
-
-    if any(v is None for v in answers.values()):
-        st.error("Please answer every question.")
+    if result.get("token") == ss().get("last_recorded_token"):
         return
-
-    wrong = [q for q in config.COMPREHENSION_QUESTIONS
-             if answers[q["id"]] != q["answer"]]
-    attempts = ss().setdefault("comprehension_attempts", 0) + 1
-    ss()["comprehension_attempts"] = attempts
-
-    if wrong:
-        st.error(f"{len(wrong)} answer(s) need another look:")
-        for q in wrong:
-            st.markdown(f"- **{q['prompt']}** {q['explain']}")
-        st.info("Re-read the highlighted points above, then submit again.")
-        return
-
+    ss()["last_recorded_token"] = token
     session = ss()["session"]
-    session["comprehension"] = {
-        "passed_utc": storage.utc_now(),
-        "attempts": attempts,
-        "n_questions": len(config.COMPREHENSION_QUESTIONS),
-    }
+    session.setdefault("demos", []).append({
+        "video_id": video_id, "view": view, "status": result.get("status"),
+        "elapsed_sec": result.get("elapsed_sec"),
+        "recorded_utc": storage.utc_now(),
+    })
     ss()["store"].save_session(session)
-    st.success("All correct.")
-    goto("practice_intro")
+    goto("demo_intro")
 
 
 # ------------------------------------------------------------ practice ------
@@ -244,22 +297,21 @@ def screen_comprehension() -> None:
 def screen_practice_intro() -> None:
     st.markdown(config.PRACTICE_INTRO)
     ss().setdefault("practice_index", 0)
-    ss().setdefault("practice_attempts", {"coarse": 0, "fine": 0})
+    ss().setdefault("practice_attempts", {g: 0 for g in PRACTICE_ORDER})
     if st.button("Begin practice", type="primary"):
         goto("practice_instructions")
 
 
 def screen_practice_instructions() -> None:
     ss().setdefault("practice_index", 0)
-    ss().setdefault("practice_attempts", {"coarse": 0, "fine": 0})
+    ss().setdefault("practice_attempts", {g: 0 for g in PRACTICE_ORDER})
     granularity = PRACTICE_ORDER[ss()["practice_index"]]
-    st.markdown(f"### Practice {ss()['practice_index'] + 1} of {len(PRACTICE_ORDER)}")
+    st.markdown("### Practice")
     st.markdown(config.INSTRUCTIONS[granularity])
     st.info(
         f"**{config.RESPONSE_KEY_NAME}** marks a boundary, **SPACE** pauses, "
-        f"**LEFT ARROW** rewinds {config.REWIND_STEP_SEC}s, and **BACKSPACE** "
-        "removes the mark you just made. Drag a mark on the bar to fix its "
-        "timing."
+        "and **BACKSPACE** removes the mark you just made. There is no "
+        "rewinding or skipping. Drag a mark on the bar to fix its timing."
     )
     if st.button("I'm ready", type="primary"):
         goto("practice_viewing")
@@ -271,12 +323,12 @@ def screen_practice_viewing() -> None:
     stim = ss()["practice"]
     token = f"{ss()['store'].participant_id}|practice|{granularity}|{attempt}"
 
-    st.markdown(f"#### Practice - {granularity} segmentation")
+    st.markdown("#### Practice - coarse boundaries")
     result = play(
         stim, token,
         title="Click here to start the practice clip",
-        subtitle=f"{config.RESPONSE_KEY_NAME} marks a {granularity} boundary. "
-                 "SPACE pauses, LEFT ARROW rewinds. Drag a mark to adjust it.",
+        subtitle=f"{config.RESPONSE_KEY_NAME} marks a coarse boundary. "
+                 "SPACE pauses. No rewinding. Drag a mark to adjust it.",
     )
 
     if is_new_result(result):
@@ -329,7 +381,7 @@ def screen_practice_feedback() -> None:
                  else config.PRACTICE_TOO_MANY)
         st.markdown(
             f"You pressed **{n}** time(s). For a clip this length we typically "
-            f"expect **{low}-{high}** {granularity} boundaries."
+            f"expect **{low}-{high}** coarse boundaries."
         )
 
     if outcome == "passed" or forced:
@@ -347,7 +399,7 @@ def screen_practice_feedback() -> None:
             )
 
         last = ss()["practice_index"] == len(PRACTICE_ORDER) - 1
-        label = "Start the experiment" if last else "Continue to the next practice"
+        label = "Start annotating" if last else "Continue to the next practice"
         if st.button(label, type="primary"):
             if last:
                 session["practice_completed"] = True
@@ -367,8 +419,9 @@ def screen_resume() -> None:
     done, total = store.n_completed(), len(session["schedule"])
     st.markdown(f"### Welcome back, {store.participant_id}")
     st.markdown(
-        f"You have completed **{done} of {total}** viewings. Nothing you did "
-        "before is lost, and you will continue from the next viewing."
+        f"You have completed **{done} of {total}** videos "
+        f"(**{total - done}** remaining). Nothing you did before is lost, and "
+        "you will continue from the next video."
     )
     if st.button("Continue where I left off", type="primary"):
         goto("block_intro")
@@ -382,28 +435,19 @@ def screen_block_intro() -> None:
     store = ss()["store"]
     total = len(ss()["session"]["schedule"])
     done = store.n_completed()
-    n_blocks = ss()["session"]["n_main_videos"]
 
-    st.progress(done / total, text=f"Viewing {done + 1} of {total}")
-    st.markdown(f"### Video {step['block_index']} of {n_blocks} - "
-                f"viewing {step['viewing_in_block']} of {len(config.GRANULARITIES)}")
-
-    if step["viewing_in_block"] == 1:
-        st.markdown("This is a **new video**. You will watch it twice.")
-    else:
-        st.markdown(
-            "This is the **same video again**, now at a different granularity. "
-            "Read the instructions carefully - they have changed."
-        )
+    st.progress(done / total, text=f"{done} of {total} videos done · "
+                                    f"{total - done} remaining")
+    st.markdown(f"### Video {done + 1} of {total}")
 
     st.markdown(config.INSTRUCTIONS[step["granularity"]])
     st.info(
         f"About {stimulus_by_id(step['video_id']).duration_sec / 60:.0f} minutes, "
-        "silent. You can pause and rewind while you watch; there is no way to "
+        "silent. You can pause while you watch, but you cannot rewind or "
         "skip forward."
     )
 
-    if st.button("I'm ready - start this viewing", type="primary"):
+    if st.button("I'm ready - start this video", type="primary"):
         goto("viewing")
 
 
@@ -417,13 +461,14 @@ def screen_viewing() -> None:
     token = (f"{store.participant_id}|{step['block_index']}|"
              f"{step['video_id']}|{step['granularity']}")
 
-    st.markdown(f"#### {step['granularity'].capitalize()} segmentation")
+    total = len(ss()["session"]["schedule"])
+    counter = remaining_label(store.n_completed(), total)
+    counter_header("Mark coarse boundaries", counter)
     result = play(
         stim, token,
         title="Click here to start the video",
-        subtitle=f"{config.RESPONSE_KEY_NAME} marks a {step['granularity']} "
-                 "boundary. SPACE pauses, LEFT ARROW rewinds. Drag a mark to "
-                 "adjust it.",
+        subtitle=f"{config.RESPONSE_KEY_NAME} marks a coarse boundary. SPACE "
+                 "pauses. No rewinding. Drag a mark to adjust it.",
     )
 
     if is_new_result(result):
@@ -439,22 +484,13 @@ def screen_break() -> None:
     if done >= total:
         goto("done")
 
-    st.progress(done / total, text=f"{done} of {total} viewings complete")
-    next_step = ss()["session"]["schedule"][done]
-
-    if next_step["viewing_in_block"] == 1:
-        st.markdown(config.BREAK_TEXT)
-        label = "Start the next video"
-    else:
-        st.markdown(
-            "### Second viewing\n\nYou have finished the first pass of this "
-            "video. Next you will watch the **same video again** at a "
-            "different granularity."
-        )
-        label = "Continue to the second viewing"
-
-    st.success("Progress saved.")
-    if st.button(label, type="primary"):
+    left = total - done
+    st.progress(done / total, text=f"{done} of {total} videos done · "
+                                    f"{left} remaining")
+    st.markdown(config.BREAK_TEXT)
+    st.success(f"Progress saved. **{left}** video{'s' if left != 1 else ''} "
+               "to go.")
+    if st.button("Start the next video", type="primary"):
         goto("block_intro")
 
 
@@ -463,9 +499,10 @@ def screen_done() -> None:
     st.balloons()
     st.markdown(config.FINISH_TEXT)
     viewings = store.completed_viewings()
-    st.markdown(f"**{len(viewings)}** viewings recorded, "
-                f"**{sum(int(v['n_presses']) for v in viewings)}** boundaries "
-                "in total.")
+    main_views = [v for v in viewings if v.get("role", "main") == "main"]
+    st.markdown(f"**{len(main_views)}** videos annotated, "
+                f"**{sum(int(v['n_presses']) for v in main_views)}** "
+                "boundaries in total.")
     download_buttons(store, prominent=True)
 
 
@@ -498,9 +535,18 @@ def sidebar(stage: str) -> None:
     # Hidden mid-viewing: any sidebar widget triggers a rerun, and we keep the
     # page inert while a video is playing.
     if stage in VIEWING_STAGES:
+        if stage == "demo_viewing":
+            st.sidebar.markdown("### Demo in progress")
+            st.sidebar.caption("Nothing is recorded during a demo.")
+            return
         st.sidebar.markdown("### Viewing in progress")
+        if stage == "viewing":
+            done = store.n_completed()
+            total = len(ss()["session"]["schedule"])
+            st.sidebar.markdown(f"**{total - done}** of {total} videos "
+                                "remaining, including this one")
         st.sidebar.caption(
-            "ENTER marks a boundary, SPACE pauses, LEFT ARROW rewinds. "
+            "ENTER marks a boundary, SPACE pauses. No rewinding. "
             "Saving and download return when the video ends."
         )
         return
@@ -508,9 +554,10 @@ def sidebar(stage: str) -> None:
     st.sidebar.markdown(f"### {store.participant_id}")
     total = len(ss()["session"]["schedule"])
     done = store.n_completed()
-    st.sidebar.markdown(f"**{done} / {total}** viewings complete")
+    st.sidebar.markdown(f"**{done} / {total}** videos complete · "
+                        f"**{total - done}** remaining")
     st.sidebar.caption(
-        "Progress saves automatically after each viewing. You can close the "
+        "Progress saves automatically after each video. You can close the "
         "app and resume with the same Participant ID."
     )
     st.sidebar.divider()
@@ -525,7 +572,8 @@ def sidebar(stage: str) -> None:
 SCREENS = {
     "welcome": screen_welcome,
     "overview": screen_overview,
-    "comprehension": screen_comprehension,
+    "demo_intro": screen_demo_intro,
+    "demo_viewing": screen_demo_viewing,
     "practice_intro": screen_practice_intro,
     "practice_instructions": screen_practice_instructions,
     "practice_viewing": screen_practice_viewing,
@@ -551,6 +599,14 @@ def main() -> None:
     if not main_videos or practice_stim is None:
         st.error("No stimuli staged. Run: python scripts/prepare_stimuli.py")
         return
+
+    demos = storage.load_demos()
+    if len(demos) < len(config.DEMO_VIDEOS):
+        names = ", ".join(d["filename"] for d in config.DEMO_VIDEOS)
+        st.error(f"Demo videos missing: static/videos/ must contain {names} "
+                 "and Annotations_in_seconds.txt.")
+        return
+    ss()["demos"] = demos
 
     stage = ss().get("stage", "login")
     st.markdown(_CSS_VIEWING if stage in VIEWING_STAGES else _CSS_TEXT,

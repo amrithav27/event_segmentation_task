@@ -3,7 +3,7 @@
 Layout, one directory per participant::
 
     responses/<participant_id>/
-        session.json     schedule, comprehension + practice records
+        session.json     schedule, demo + practice records
         viewings.csv     one row per completed viewing
         boundaries.csv   one row per boundary mark
 
@@ -27,13 +27,13 @@ from datetime import datetime, timezone
 
 import config
 
-#: 3.x adds `role` and `attempt` columns and records the practice viewings
-#: alongside the main ones, so its CSVs are not column-compatible with 2.x.
-APP_VERSION = "3.0.0"
+#: 4.x is coarse-only: one viewing per video, demos in place of the
+#: comprehension check. CSV columns are unchanged from 3.x.
+APP_VERSION = "4.0.0"
 
-#: ``role`` separates the two practice viewings from the six that are data.
-#: ``attempt`` is >1 only when a practice trial was redone; the accepted run is
-#: the highest attempt for that granularity.
+#: ``role`` separates the practice viewing from the main ones that are data.
+#: ``attempt`` is >1 only when the practice trial was redone; the accepted run
+#: is the highest attempt.
 VIEWING_FIELDS = [
     "participant_id", "role", "block_index", "video_id", "granularity",
     "viewing_in_block", "attempt", "n_presses", "video_duration_sec",
@@ -113,11 +113,52 @@ def load_stimuli() -> tuple[list[Stimulus], Stimulus | None]:
     return main, practice
 
 
+@dataclass(frozen=True)
+class Demo:
+    video_id: str
+    filename: str
+    boundaries: tuple[float, ...]   # reference coarse boundaries, sorted
+
+    @property
+    def url(self) -> str:
+        return f"/{config.VIDEO_URL_PREFIX}/{self.filename}"
+
+
+def _parse_annotations(text: str) -> dict[int, list[float]]:
+    """``{N: [seconds, ...]}`` from the "Video N: [...]" lines of the file."""
+    out: dict[int, list[float]] = {}
+    for m in re.finditer(r"Video\s*(\d+)\s*:\s*\[([^\]]*)\]", text):
+        values = [float(v) for v in m.group(2).replace("\n", " ").split(",")
+                  if v.strip()]
+        out[int(m.group(1))] = sorted(values)
+    return out
+
+
+def load_demos() -> list[Demo]:
+    """The demo videos that are on disk, with their reference boundaries.
+
+    Read from ``config.DEMO_ANNOTATIONS_FILE`` every time, so editing that
+    file is all it takes to change what a demo shows.
+    """
+    path = config.DEMO_ANNOTATIONS_FILE
+    if not path.exists():
+        return []
+    annotations = _parse_annotations(path.read_text(encoding="utf-8"))
+    video_dir = config.ROOT / "static" / "videos"
+    demos = []
+    for d in config.DEMO_VIDEOS:
+        if not (video_dir / d["filename"]).exists():
+            continue
+        demos.append(Demo(d["video_id"], d["filename"],
+                          tuple(annotations.get(d["annotation_index"], []))))
+    return demos
+
+
 # -------------------------------------------------------------- schedule ----
 
 
 def build_schedule(participant_id: str, main: list[Stimulus]) -> list[dict]:
-    """Randomise video order, and granularity order within each video.
+    """Randomise video order; each video gets one viewing per granularity.
 
     Seeded by participant ID so the same person always gets the same schedule,
     which keeps a resumed session identical to the original one even before the
@@ -141,21 +182,6 @@ def build_schedule(participant_id: str, main: list[Stimulus]) -> list[dict]:
                 "viewing_in_block": viewing_in_block,
             })
     return schedule
-
-
-def comprehension_options(participant_id: str, question: dict) -> list[str]:
-    """One question's options in a per-participant order.
-
-    Seeded by participant and question id, so it is stable across Streamlit
-    reruns -- the options must not reshuffle under someone part-way through
-    the form. Shuffling at all is what stops answer position from being a cue:
-    written in order, the correct answer would sit first every time.
-    """
-    key = f"{participant_id}|{question['id']}".encode()
-    seed = int(hashlib.sha256(key).hexdigest()[:16], 16)
-    options = list(question["options"])
-    random.Random(seed).shuffle(options)
-    return options
 
 
 # ----------------------------------------------------------------- store ----
@@ -200,7 +226,8 @@ class Store:
             "created_utc": utc_now(),
             "n_main_videos": len(main),
             "schedule": build_schedule(self.participant_id, main),
-            "comprehension": None,
+            "demos": [],
+            "demos_completed": False,
             "practice": [],
         }
         self.save_session(session)
@@ -210,8 +237,17 @@ class Store:
     def open_or_create(self, main: list[Stimulus]) -> tuple[dict, bool]:
         """Return ``(session, resumed)``."""
         if self.exists():
+            session = self.load_session()
+            # A session created by an older version may schedule viewings this
+            # version no longer runs; resuming it would show them.
+            stale = {s["granularity"] for s in session["schedule"]} - set(config.GRANULARITIES)
+            if stale:
+                raise ValueError(
+                    "This Participant ID belongs to an older version of the "
+                    "study. Please contact the experimenter for a new ID."
+                )
             self._ensure_headers()
-            return self.load_session(), True
+            return session, True
         return self.create_session(main), False
 
     # -- results ------------------------------------------------------------
@@ -246,8 +282,8 @@ class Store:
         Written together and only on completion, so the two CSVs can never
         disagree about which viewings exist.
 
-        Marks are stored in the order the participant pressed them. Rewinding
-        and dragging both mean that is *not* necessarily increasing time order
+        Marks are stored in the order the participant pressed them. Dragging
+        means that is *not* necessarily increasing time order
         -- sort by ``boundary_sec`` before analysing.
         """
         self._ensure_headers()
